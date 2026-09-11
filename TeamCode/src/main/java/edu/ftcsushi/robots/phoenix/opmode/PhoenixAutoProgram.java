@@ -86,7 +86,7 @@ final class PhoenixAutoProgram {
                 profile,
                 pedroRuntime.driveAdapter(),
                 pedroRuntime.motionPredictor(),
-                prestart.eligibleScoringTagIds(),
+                prestart.selectedScoringTagId(),
                 BooleanSource.constant(true),
                 BooleanSource.constant(false),
                 () -> pedroRuntime.setStartingPose(prestart.frozenStartingPose())

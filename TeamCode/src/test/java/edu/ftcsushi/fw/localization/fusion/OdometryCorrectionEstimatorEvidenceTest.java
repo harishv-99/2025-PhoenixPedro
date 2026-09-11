@@ -16,7 +16,8 @@ import edu.ftcsushi.fw.localization.MotionPredictor;
 import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.PoseResetter;
-import edu.ftcsushi.fw.spatial.AbsolutePoseSpatialSolveLane;
+import edu.ftcsushi.fw.spatial.SpatialSolveSet;
+import edu.ftcsushi.fw.spatial.SpatialSolveLane;
 import edu.ftcsushi.fw.spatial.SpatialSolveRequest;
 import edu.ftcsushi.fw.spatial.SpatialTargets;
 
@@ -558,7 +559,7 @@ public final class OdometryCorrectionEstimatorEvidenceTest {
         for (Kind kind : Kind.values()) {
             Fixture f = new Fixture(kind);
             f.initialize();
-            AbsolutePoseSpatialSolveLane lane = new AbsolutePoseSpatialSolveLane(f.estimator, 0.1, 0.0);
+            SpatialSolveLane lane = SpatialSolveSet.builder().absolutePose(f.estimator, 0.1, 0.0).build().lane(0);
             DriveSource drive = new GamepadDriveSource(ScalarSource.constant(0.0),
                     ScalarSource.constant(1.0), ScalarSource.constant(0.0),
                     GamepadDriveSource.Config.defaults()).fieldRelativeTo(f.estimator, () -> 0.0, 0.1, 0.0);

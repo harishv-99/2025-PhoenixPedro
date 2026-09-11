@@ -2,13 +2,8 @@ package edu.ftcsushi.robots.phoenix.scoring;
 
 import org.junit.Test;
 
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Set;
-
 import edu.ftcsushi.fw.core.geometry.Pose3d;
+import edu.ftcsushi.fw.core.math.InterpolatingTable1D;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.source.Source;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -18,1042 +13,406 @@ import edu.ftcsushi.fw.drive.DriveOverlay;
 import edu.ftcsushi.fw.drive.DriveOverlayMask;
 import edu.ftcsushi.fw.drive.DriveSignal;
 import edu.ftcsushi.fw.drive.guidance.DriveGuidanceTask;
-import edu.ftcsushi.fw.field.TagLayout;
+import edu.ftcsushi.fw.field.SimpleTagLayout;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.PoseEstimate;
+import edu.ftcsushi.fw.localization.MotionDelta;
+import edu.ftcsushi.fw.localization.MotionPredictor;
+import edu.ftcsushi.fw.localization.fusion.OdometryCorrectionFusionEstimator;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagObservation;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.fw.task.Task;
 import edu.ftcsushi.robots.phoenix.PhoenixCapabilities;
-import edu.ftcsushi.robots.phoenix.PhoenixProfile;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
-import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertSame;
-import static org.junit.Assert.assertTrue;
-import static org.junit.Assert.fail;
+import static org.junit.Assert.*;
 
-/** Verifies Phoenix's ordinary Source graph and successful-only targeting publication. */
+/** Deterministic application policy checks; synthetic poses do not prove physical shot accuracy. */
 public final class PhoenixTargetingSourceTest {
+    @Test public void cameraToTagRangeUsesRotatedMountAndHeightAndLeavesTableDomainUnchanged() {
+        PhoenixTargeting.Config config = config();
+        config.shotVelocityTable = InterpolatingTable1D.ofSorted(
+                new double[]{20.0, 40.0}, new double[]{1000.0, 1400.0});
+        Fixture f = new Fixture(config,
+                new SimpleTagLayout().addPose(24, pose(98, 54, 32, 0, 0, 0)),
+                CameraMountConfig.of(10, 2, 14, 0.4, -0.2, 0.1));
+        f.publish(pose(100, 20, 0, Math.PI / 2, 0, 0), 0.8);
+        f.targeting.update(f.clock);
+        PhoenixCapabilities.TargetingStatus status = f.targeting.status();
+        // Camera origin (98,30,14): tag delta (0,24,18), whose 3D length is 30.
+        assertEquals(30.0, status.cameraToTagRange3dInches, 1e-9);
+        assertEquals(1200.0, status.suggestedVelocityNative, 1e-9);
+        assertTrue(status.hasUsablePose);
+        assertSame(f.estimator.estimate.timestamp, status.poseTimestamp);
+        assertEquals(24, status.configuredTagId);
+        assertEquals(1, f.estimator.reads);
+        assertEquals(0, f.estimator.updates);
+    }
 
-    @Test
-    public void lateCalculationFailureDoesNotAdvanceAimReadinessAndCanRetrySameCycle() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        PhoenixTargeting.Config autoAim = PhoenixTargeting.Config.defaults();
-        autoAim.aimReadyDebounceSec = 0.5;
-        int scoringTagId = autoAim.scoringTargets.keySet().iterator().next();
-        int[] eligibilityReads = {0};
-        RuntimeException injectedFailure = new RuntimeException("injected guidance failure");
-        FailOncePoseEstimator poseEstimator = new FailOncePoseEstimator(injectedFailure);
-        PhoenixTargeting targeting = new PhoenixTargeting(
-                autoAim,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                new CurrentFrameAprilTagSensor(scoringTagId),
-                CameraMountConfig.identity(),
-                poseEstimator,
-                profile.fixedAprilTagLayout,
-                Source.of(clock -> {
-                    eligibilityReads[0]++;
-                    return Collections.singleton(scoringTagId);
-                }),
-                BooleanSource.constant(true),
-                BooleanSource.constant(false)
-        );
+    @Test public void noCameraVisibilityIsRequiredWhileCorrectedPoseRemainsUsable() {
+        Fixture f = new Fixture();
+        f.publish(Pose3d.zero(), 0.8);
+        f.targeting.update(f.clock);
+        assertTrue(f.targeting.status().aimReady);
+        assertEquals(36.0, f.targeting.status().cameraToTagRange3dInches, 0.0);
+        // The outside localization publication advances during camera occlusion. Targeting has
+        // no camera dependency and cannot silently fall back to an image-only aim or range.
+        f.clock.update(0.1);
+        f.publish(pose(6, 0, 0, 0, 0, 0), 0.8);
+        f.targeting.update(f.clock);
+        assertTrue(f.targeting.status().hasSuggestedVelocity);
+        assertTrue(f.targeting.status().aimReady);
+        assertEquals(30.0, f.targeting.status().cameraToTagRange3dInches, 0.0);
+        assertEquals(24, f.targeting.status().configuredTagId);
+    }
 
+    @Test public void realFusionKeepsTargetingThroughCorrectionLossButNotFrozenPoseEvidence() {
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
-        PhoenixCapabilities.TargetingStatus initial = targeting.status();
-        assertFalse(initial.selection.hasSelection);
-        clock.update(0.25);
+        RecordingPredictor predictor = new RecordingPredictor();
+        predictor.estimate = new PoseEstimate(Pose3d.zero(), true, 0.8, clock.nowTimestamp());
+        RecordingPoseEstimator correction = new RecordingPoseEstimator();
+        correction.estimate = new PoseEstimate(Pose3d.zero(), true, 1.0, clock.nowTimestamp());
+        OdometryCorrectionFusionEstimator.Config fusionConfig =
+                OdometryCorrectionFusionEstimator.Config.defaults();
+        // Synthetic correction boundary only; no hardware resetter, camera or field calibration.
+        fusionConfig.enablePushCorrectedPoseToPredictor = false;
+        OdometryCorrectionFusionEstimator localization = new OdometryCorrectionFusionEstimator(
+                predictor, correction, fusionConfig);
+        PhoenixTargeting targeting = new PhoenixTargeting(config(), CameraMountConfig.identity(),
+                localization, layout(), Source.constant(24),
+                BooleanSource.constant(true), BooleanSource.constant(false));
+        localization.update(clock);
+        targeting.update(clock);
+        assertEquals(1, localization.getAcceptedCorrectionCount());
+        assertTrue(targeting.status().aimReady);
+        LoopTimestamp earlier = predictor.estimate.timestamp;
+        clock.update(0.1);
+        predictor.estimate = new PoseEstimate(pose(6,0,0,0,0,0), true, 0.8, clock.nowTimestamp());
+        predictor.delta = new MotionDelta(pose(6,0,0,0,0,0), true, 0.8,
+                earlier, predictor.estimate.timestamp);
+        correction.estimate = PoseEstimate.noPose(clock.nowTimestamp());
+        localization.update(clock);
+        targeting.update(clock);
+        assertEquals(1, localization.getAcceptedCorrectionCount());
+        assertEquals(30.0, targeting.status().cameraToTagRange3dInches, 1e-9);
+        assertTrue(targeting.status().aimReady);
+        assertTrue(targeting.status().hasSuggestedVelocity);
+        clock.update(0.7); // Both inputs now retain old evidence; polling must not refresh it.
+        localization.update(clock);
+        targeting.update(clock);
+        assertFalse(targeting.status().hasUsablePose);
+        assertFalse(targeting.status().aimReady);
+        assertFalse(targeting.status().hasSuggestedVelocity);
+    }
 
-        try {
-            targeting.update(clock);
-            fail("expected injected late targeting-calculation failure");
-        } catch (RuntimeException actual) {
-            assertSame(injectedFailure, actual);
+    @Test public void aimRangeOverlayAndTaskReuseOnePublishedPoseInTheCycle() {
+        Fixture f = new Fixture();
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        PhoenixCapabilities.TargetingStatus first = f.targeting.status();
+        f.estimator.estimate = new PoseEstimate(pose(0, 0, 0, Math.PI / 2, 0, 0),
+                true, 1.0, f.clock.nowTimestamp());
+        DriveOverlay overlay = f.targeting.aimOverlay();
+        overlay.onEnable(f.clock);
+        overlay.get(f.clock);
+        Task task = f.targeting.aimTask(new RecordingDriveSink(), null);
+        task.start(f.clock);
+        task.update(f.clock);
+        f.targeting.update(f.clock);
+        assertSame(first, f.targeting.status());
+        assertEquals(0.0, first.aimStatus.omegaErrorRad, 0.0);
+        assertEquals(1, f.estimator.reads);
+        assertEquals(0, f.estimator.updates);
+    }
+
+    @Test public void invalidQualityAvailabilityGeometryAndAgeWithdrawBothAimAndSuggestion() {
+        for (double quality : new double[]{Double.NaN, Double.POSITIVE_INFINITY,
+                Double.NEGATIVE_INFINITY, -0.01, 0.099, 1.01}) {
+            Fixture f = new Fixture();
+            f.publish(Pose3d.zero(), quality);
+            assertUnavailable(f);
         }
-        assertSame("a failed update must retain the prior published snapshot",
-                initial, targeting.status());
-        assertEquals(1, eligibilityReads[0]);
-
-        targeting.update(clock);
-        PhoenixCapabilities.TargetingStatus recovered = targeting.status();
-        assertTrue(recovered.selection.hasSelection);
-        assertTrue(recovered.aimStatus.hasOmegaError);
-        assertTrue(recovered.aimStatus.omegaWithin(Math.toRadians(autoAim.aimReadyToleranceDeg)));
-        assertFalse("the failed prior cycle must not contribute its dt to readiness", recovered.aimReady);
-        assertSame(recovered, targeting.status());
-        assertEquals("the committed runtime must freeze eligibility across retry", 1,
-                eligibilityReads[0]);
-
-        clock.update(0.75);
-        targeting.update(clock);
-        assertTrue("two successful ready cycles should satisfy the configured debounce",
-                targeting.status().aimReady);
-    }
-
-    @Test
-    public void freshObservationWithNonFiniteRangePublishesNoSuggestedVelocity() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                new CurrentFrameNonFiniteRangeAprilTagSensor(selectedTagId),
-                Source.constant(Collections.singleton(selectedTagId))
-        );
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-
-        targeting.update(clock);
-
-        PhoenixCapabilities.TargetingStatus status = targeting.status();
-        assertTrue(status.selection.hasFreshSelectedObservation);
-        assertTrue(status.selection.selectedObservation.hasTarget);
-        assertTrue(Double.isInfinite(
-                status.selection.selectedObservation.cameraRangeInches()
-        ));
-        assertFalse(status.hasSuggestedVelocity);
-        assertTrue(Double.isNaN(status.suggestedVelocityNative));
-    }
-
-    @Test
-    public void freshObservationWithFiniteRangePublishesFiniteSuggestedVelocity() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                new CurrentFrameAprilTagSensor(selectedTagId),
-                Source.constant(Collections.singleton(selectedTagId))
-        );
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-
-        targeting.update(clock);
-
-        PhoenixCapabilities.TargetingStatus status = targeting.status();
-        assertTrue(status.selection.hasFreshSelectedObservation);
-        assertTrue(status.hasSuggestedVelocity);
-        assertTrue(Double.isFinite(status.suggestedVelocityNative));
-        assertEquals(
-                profile.targeting.shotVelocityTable.interpolate(36.0),
-                status.suggestedVelocityNative,
-                0.0
-        );
-    }
-
-    @Test
-    public void failedCalculationRetriesWithoutPublishingDefaultAndBorrowedResetStopsAtView() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        RuntimeException injectedFailure = new RuntimeException("injected override read failure");
-        int[] overrideReads = {0};
-        BooleanSource failOnceOverride = BooleanSource.of(() -> {
-            overrideReads[0]++;
-            if (overrideReads[0] == 1) {
-                throw injectedFailure;
-            }
-            return false;
-        });
-
-        PhoenixTargeting targeting = new PhoenixTargeting(
-                profile.targeting,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                new EmptyAprilTagSensor(),
-                CameraMountConfig.identity(),
-                new NoPoseEstimator(),
-                profile.fixedAprilTagLayout,
-                Source.constant(profile.targeting.scoringTargets.keySet()),
-                BooleanSource.constant(true),
-                failOnceOverride
-        );
-        LoopClock clock = new LoopClock();
-        clock.update(1.0);
-        PhoenixCapabilities.TargetingStatus initial = targeting.status();
-
-        try {
-            targeting.update(clock);
-            fail("expected injected targeting input failure");
-        } catch (RuntimeException actual) {
-            assertSame(injectedFailure, actual);
+        for (int index = 0; index < 6; index++) {
+            Fixture f = new Fixture();
+            double[] values = new double[6];
+            values[index] = Double.NaN;
+            f.publish(pose(values[0], values[1], values[2], values[3], values[4], values[5]), 1.0);
+            assertUnavailable(f);
         }
-        assertSame(initial, targeting.status());
-
-        targeting.update(clock);
-        PhoenixCapabilities.TargetingStatus recovered = targeting.status();
-        assertTrue(recovered.autoAimEnabled);
-        assertFalse(recovered.aimOverride);
-        assertEquals(2, overrideReads[0]);
-        assertSame(recovered, targeting.status());
-
-        targeting.aimOkToShootSource().reset();
-        assertSame(recovered, targeting.status());
-        assertEquals(2, overrideReads[0]);
-
-        targeting.reset();
-        PhoenixCapabilities.TargetingStatus afterOwnerReset = targeting.status();
-        assertNotSame(recovered, afterOwnerReset);
-        assertFalse(afterOwnerReset.autoAimEnabled);
-        assertEquals(2, overrideReads[0]);
-
-        targeting.update(clock);
-        PhoenixCapabilities.TargetingStatus republished = targeting.status();
-        assertNotSame(afterOwnerReset, republished);
-        assertTrue(republished.autoAimEnabled);
-        assertEquals(3, overrideReads[0]);
+        Fixture unavailable = new Fixture();
+        unavailable.estimator.estimate = PoseEstimate.noPose(unavailable.clock.nowTimestamp());
+        assertUnavailable(unavailable);
+        Fixture unknownTime = new Fixture();
+        unknownTime.estimator.estimate = new PoseEstimate(Pose3d.zero(), true, 1.0,
+                LoopTimestamp.unavailable());
+        assertUnavailable(unknownTime);
+        Fixture stale = new Fixture();
+        stale.publish(Pose3d.zero(), 1.0);
+        stale.clock.update(0.501);
+        assertUnavailable(stale);
+        Fixture oldEpoch = new Fixture();
+        oldEpoch.publish(Pose3d.zero(), 1.0);
+        oldEpoch.clock.reset(0.0);
+        assertUnavailable(oldEpoch);
+        Fixture absent = new Fixture();
+        absent.estimator.estimate = null;
+        assertUnavailable(absent);
     }
 
-    @Test
-    public void eligibleTargetsFreezeBeforeStickyPolicyAndRefreshOnlyAfterOwnerReset() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds =
-                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
-        assertTrue("Phoenix test profile must contain both alliance targets",
-                configuredTagIds.length >= 2);
-        int firstTagId = configuredTagIds[0];
-        int secondTagId = configuredTagIds[1];
-
-        Set<Integer> eligibleTagIds = new LinkedHashSet<Integer>();
-        eligibleTagIds.add(firstTagId);
-        int[] eligibilityReads = {0};
-        CurrentFrameMultipleAprilTagSensor tagSensor =
-                new CurrentFrameMultipleAprilTagSensor(firstTagId, secondTagId);
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                tagSensor,
-                Source.of(clock -> {
-                    eligibilityReads[0]++;
-                    return eligibleTagIds;
-                })
-        );
-
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-        targeting.update(clock);
-        assertTrue(targeting.status().selection.hasSelection);
-        assertEquals(firstTagId, targeting.status().selection.selectedTagId);
-        assertEquals(
-                "the opposite-alliance observation must be filtered before selection policy",
-                Collections.singleton(firstTagId),
-                targeting.status().selection.visibleCandidateIds
-        );
-
-        eligibleTagIds.clear();
-        eligibleTagIds.add(secondTagId);
-        clock.update(0.02);
-        targeting.update(clock);
-
-        assertTrue(targeting.status().selection.hasSelection);
-        assertEquals(
-                "the first validated eligibility snapshot must remain frozen for the session",
-                firstTagId,
-                targeting.status().selection.selectedTagId
-        );
-        assertEquals(
-                profile.targeting.scoringTargets.get(firstTagId).label,
-                targeting.status().targetLabel
-        );
-        assertEquals(
-                "target eligibility must not mutate the full configured scoring catalog",
-                configuredTagIds.length,
-                profile.targeting.scoringTargets.size()
-        );
-        assertEquals("eligibility must be sampled once per targeting session", 1, eligibilityReads[0]);
-
-        targeting.reset();
-        clock.update(0.04);
-        targeting.update(clock);
-        assertEquals(
-                "an explicit owner reset may freeze a new eligible target family",
-                secondTagId,
-                targeting.status().selection.selectedTagId
-        );
-        assertEquals(
-                Collections.singleton(secondTagId),
-                targeting.status().selection.visibleCandidateIds
-        );
-        assertEquals(2, eligibilityReads[0]);
+    @Test public void inclusivePoseAgeAndQualityBoundariesAreAccepted() {
+        Fixture f = new Fixture();
+        f.publish(Pose3d.zero(), 0.10);
+        f.clock.update(0.50);
+        f.targeting.update(f.clock);
+        assertTrue(f.targeting.status().hasUsablePose);
+        assertTrue(f.targeting.status().hasSuggestedVelocity);
+        assertTrue(f.targeting.status().aimReady);
     }
 
-    @Test
-    public void inactiveCatalogTagMissingFromFixedLayoutDoesNotBlockExactEligibleRuntime() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds =
-                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
-        assertTrue("Phoenix test profile must contain both alliance targets",
-                configuredTagIds.length >= 2);
-        int eligibleTagId = configuredTagIds[0];
-        int inactiveTagId = configuredTagIds[1];
-        assertTrue(profile.fixedAprilTagLayout.has(eligibleTagId));
-
-        CountingCurrentFrameMultipleAprilTagSensor tagSensor =
-                new CountingCurrentFrameMultipleAprilTagSensor(eligibleTagId, inactiveTagId);
-        int[] eligibilityReads = {0};
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                tagSensor,
-                new OmittingTagLayout(profile.fixedAprilTagLayout, inactiveTagId),
-                Source.of(clock -> {
-                    eligibilityReads[0]++;
-                    return Collections.singleton(eligibleTagId);
-                })
-        );
-
-        assertEquals("construction must not sample mode selection", 0, eligibilityReads[0]);
-        assertEquals("construction must not sample the sensor", 0, tagSensor.reads);
-
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-        targeting.update(clock);
-
-        assertEquals(1, eligibilityReads[0]);
-        assertEquals(1, tagSensor.reads);
-        assertTrue(targeting.status().selection.hasSelection);
-        assertEquals(eligibleTagId, targeting.status().selection.selectedTagId);
-        assertEquals(
-                "the inactive catalog observation must not enter the exact selector",
-                Collections.singleton(eligibleTagId),
-                targeting.status().selection.visibleCandidateIds
-        );
+    @Test public void rangeOverflowNeverBecomesAClampedVelocitySuggestion() {
+        Fixture f = new Fixture(config(),
+                new SimpleTagLayout().addPose(24, pose(Double.MAX_VALUE, 0, 0, 0, 0, 0)),
+                CameraMountConfig.identity());
+        f.publish(pose(-Double.MAX_VALUE, 0, 0, 0, 0, 0), 1.0);
+        f.targeting.update(f.clock);
+        assertFalse(f.targeting.status().hasSuggestedVelocity);
+        assertTrue(Double.isNaN(f.targeting.status().cameraToTagRange3dInches));
+        assertTrue(Double.isNaN(f.targeting.status().suggestedVelocityNative));
     }
 
-    @Test
-    public void selectedTagMissingFromFixedLayoutFailsBeforeSensorRead() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
-        CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
-        int[] eligibilityReads = {0};
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                tagSensor,
-                new OmittingTagLayout(profile.fixedAprilTagLayout, selectedTagId),
-                Source.of(clock -> {
-                    eligibilityReads[0]++;
-                    return Collections.singleton(selectedTagId);
-                })
-        );
+    @Test public void stalePoseDoesNotEraseConfiguredTargetAndManualOverrideStillOwnsFeedBypass() {
+        Fixture f = new Fixture();
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        f.clock.update(0.51);
+        f.override = true;
+        f.targeting.update(f.clock);
+        assertEquals(24, f.targeting.status().configuredTagId);
+        assertNotNull(f.targeting.status().fieldToSelectedTag);
+        assertFalse(f.targeting.status().aimReady);
+        assertTrue(f.targeting.status().aimOkToShoot);
+        assertFalse(f.targeting.status().hasSuggestedVelocity);
+        f.clock.update(0.52);
+        f.override = false;
+        f.autoAim = false;
+        f.targeting.update(f.clock);
+        assertTrue(f.targeting.status().aimOkToShoot);
+        assertFalse(f.targeting.status().hasSuggestedVelocity);
+    }
 
-        assertEquals("construction must not sample mode selection", 0, eligibilityReads[0]);
-        LoopClock clock = new LoopClock();
-        clock.update(1.0);
-        try {
-            targeting.update(clock);
-            fail("expected selected tag absent from the fixed layout to fail");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("eligibleScoringTagIds"));
-            assertTrue(expected.getMessage().toLowerCase().contains("fixed"));
-            assertTrue(expected.getMessage().contains(Integer.toString(selectedTagId)));
+    @Test public void targetFreezesBeforePoseFailureAndOnlyOwnerResetChoosesAgain() {
+        Fixture f = new Fixture();
+        RuntimeException failure = new IllegalStateException("pose read failed");
+        f.estimator.failure = failure;
+        PhoenixCapabilities.TargetingStatus initial = f.targeting.status();
+        assertSame(failure, assertThrows(RuntimeException.class, () -> f.targeting.update(f.clock)));
+        assertSame(initial, f.targeting.status());
+        f.selectedId = 20;
+        f.estimator.failure = null;
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        assertEquals(24, f.targeting.status().configuredTagId);
+        assertEquals(1, f.idReads);
+        f.targeting.reset();
+        assertEquals(0, f.idResets);
+        f.clock.update(0.1);
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        assertEquals(20, f.targeting.status().configuredTagId);
+        assertEquals(2, f.idReads);
+        assertEquals(0, f.estimator.updates);
+    }
+
+    @Test public void failedCalculationDoesNotStartReadinessDebounceAndCanRetry() {
+        PhoenixTargeting.Config config = config();
+        config.aimReadyDebounceSec = 0.10;
+        Fixture f = new Fixture(config, layout(), CameraMountConfig.identity());
+        f.targeting.update(f.clock); // A successful no-pose sample establishes not-ready.
+        PhoenixCapabilities.TargetingStatus previous = f.targeting.status();
+        f.clock.update(0.06);
+        f.publish(Pose3d.zero(), 1.0);
+        f.estimator.failure = new IllegalStateException("first publication unavailable");
+        assertThrows(IllegalStateException.class, () -> f.targeting.update(f.clock));
+        assertSame(previous, f.targeting.status());
+        f.estimator.failure = null;
+        // Source debounce counts sampled dtSec, unlike a Task's own start-time deadline.
+        // The retry may contribute this 0.06s interval only once, still below 0.10s.
+        f.targeting.update(f.clock);
+        assertFalse(f.targeting.status().aimReady);
+        f.clock.update(0.11);
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        assertTrue(f.targeting.status().aimReady);
+    }
+
+    @Test public void configuredTargetAndFieldFactsAreCapturedBeforeLaterAuthorEdits() {
+        PhoenixTargeting.Config config = config();
+        SimpleTagLayout layout = layout();
+        Fixture f = new Fixture(config, layout, CameraMountConfig.identity());
+        config.scoringTargets.get(24).label = "mutated";
+        config.scoringTargets.get(24).aimOffset.leftInches = 100.0;
+        config.poseMaxAgeSec = 0.0;
+        config.poseMinQuality = 1.0;
+        f.publish(Pose3d.zero(), 0.5);
+        f.targeting.update(f.clock);
+        layout.addPose(24, pose(0, 100, 0, 0, 0, 0));
+        f.clock.update(0.1);
+        f.targeting.update(f.clock);
+        assertEquals("Red scoring target", f.targeting.status().targetLabel);
+        assertEquals(0.0, f.targeting.status().aimOffsetLeftInches, 0.0);
+        assertEquals(36.0, f.targeting.status().cameraToTagRange3dInches, 0.0);
+        assertTrue(f.targeting.status().hasUsablePose);
+    }
+
+    @Test public void selectedIdAndMissingCatalogOrFieldPoseFailBeforeBorrowedPoseRead() {
+        for (Integer id : new Integer[]{null, -1, 999}) {
+            Fixture f = new Fixture();
+            f.selectedId = id;
+            assertThrows(IllegalArgumentException.class, () -> f.targeting.update(f.clock));
+            assertEquals(0, f.estimator.reads);
+            assertEquals(-1, f.targeting.status().configuredTagId);
         }
-
-        assertEquals(1, eligibilityReads[0]);
-        assertEquals("fixed-layout validation must precede sensor selection", 0, tagSensor.reads);
-        assertFalse(targeting.status().selection.hasSelection);
+        Fixture missing = new Fixture(config(), new SimpleTagLayout(), CameraMountConfig.identity());
+        assertThrows(IllegalArgumentException.class, () -> missing.targeting.update(missing.clock));
+        assertEquals(0, missing.estimator.reads);
     }
 
-    @Test
-    public void missingCatalogDefersToPrestartAndFailsActionablyBeforeSensorRead() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        PhoenixTargeting.Config autoAim = PhoenixTargeting.Config.defaults();
-        autoAim.scoringTargets = null;
-        CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
-        int[] eligibilityReads = {0};
-
-        PhoenixTargeting targeting = new PhoenixTargeting(
-                autoAim,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                tagSensor,
-                CameraMountConfig.identity(),
-                new NoPoseEstimator(),
-                profile.fixedAprilTagLayout,
-                Source.of(clock -> {
-                    eligibilityReads[0]++;
-                    return Collections.singleton(autoAim.redAllianceScoringTagId);
-                }),
-                BooleanSource.constant(true),
-                BooleanSource.constant(false)
-        );
-
-        assertEquals("constructor must leave the missing catalog to managed prestart", 0,
-                eligibilityReads[0]);
-        assertEquals(0, tagSensor.reads);
-        assertFalse(targeting.status().selection.hasSelection);
-
-        LoopClock clock = new LoopClock();
-        clock.update(1.0);
-        try {
-            targeting.update(clock);
-            fail("expected a missing catalog to fail if targeting update is improperly reached");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("PhoenixTargeting.Config.scoringTargets"));
-            assertTrue(expected.getMessage().contains("readiness"));
-            assertTrue(expected.getMessage().contains("block START"));
-        }
-
-        assertEquals("eligible ids are sampled and validated before selected catalog lookup", 1,
-                eligibilityReads[0]);
-        assertEquals("catalog validation must precede sensor selection", 0, tagSensor.reads);
+    @Test public void aimConsumersRequireManagedTargetingStartAndResetRequiresFreshOverlay() {
+        Fixture f = new Fixture();
+        DriveOverlay overlay = f.targeting.aimOverlay();
+        Task task = f.targeting.aimTask(new RecordingDriveSink(), null);
+        assertThrows(IllegalStateException.class, () -> overlay.onEnable(f.clock));
+        assertThrows(IllegalStateException.class, () -> task.start(f.clock));
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        overlay.onEnable(f.clock);
+        assertNotNull(overlay.get(f.clock));
+        overlay.onDisable(f.clock);
+        f.targeting.reset();
+        f.clock.update(0.1);
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        assertThrows(IllegalStateException.class, () -> overlay.get(f.clock));
+        DriveOverlay fresh = f.targeting.aimOverlay();
+        fresh.onEnable(f.clock);
+        assertNotNull(fresh.get(f.clock));
     }
 
-    @Test
-    public void eligibleTargetsFreezeOnceEvenWhenFirstSensorCalculationFails() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds =
-                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
-        assertTrue("Phoenix test profile must contain both alliance targets",
-                configuredTagIds.length >= 2);
-        int firstTagId = configuredTagIds[0];
-        int secondTagId = configuredTagIds[1];
-
-        Set<Integer> eligibleTagIds = new LinkedHashSet<Integer>();
-        eligibleTagIds.add(firstTagId);
-        int[] eligibilityReads = {0};
-        RuntimeException injectedFailure = new RuntimeException("injected first sensor failure");
-        FailOnceCurrentFrameMultipleAprilTagSensor tagSensor =
-                new FailOnceCurrentFrameMultipleAprilTagSensor(
-                        injectedFailure,
-                        firstTagId,
-                        secondTagId
-                );
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                tagSensor,
-                Source.of(clock -> {
-                    eligibilityReads[0]++;
-                    return eligibleTagIds;
-                })
-        );
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-        PhoenixCapabilities.TargetingStatus initial = targeting.status();
-
-        try {
-            targeting.update(clock);
-            fail("expected injected first sensor failure");
-        } catch (RuntimeException actual) {
-            assertSame(injectedFailure, actual);
-        }
-        assertEquals(1, eligibilityReads[0]);
-        assertEquals(1, tagSensor.reads);
-        assertSame("failed calculation must not publish a partial status", initial, targeting.status());
-
-        eligibleTagIds.clear();
-        eligibleTagIds.add(secondTagId);
-        targeting.update(clock);
-
-        assertEquals("validated eligibility must remain frozen across calculation retry",
-                1, eligibilityReads[0]);
-        assertEquals(2, tagSensor.reads);
-        assertTrue(targeting.status().selection.hasSelection);
-        assertEquals(firstTagId, targeting.status().selection.selectedTagId);
-        assertEquals(Collections.singleton(firstTagId),
-                targeting.status().selection.visibleCandidateIds);
+    @Test public void aimTaskSnapshotsEachInvalidNumericConfigBeforeDeferredStart() {
+        assertInvalidTaskConfig("positionTolInches", Double.NaN, 0.5, (c,v) -> c.positionTolInches=v);
+        assertInvalidTaskConfig("headingTolRad", Double.POSITIVE_INFINITY, 0.1, (c,v) -> c.headingTolRad=v);
+        assertInvalidTaskConfig("timeoutSec", 0.0, 1.0, (c,v) -> c.timeoutSec=v);
+        assertInvalidTaskConfig("maxNoGuidanceSec", Double.NEGATIVE_INFINITY, 0.25,
+                (c,v) -> c.maxNoGuidanceSec=v);
     }
 
-    @Test
-    public void eligibleTargetsFreezeOnceEvenWhenFirstGuidanceQueryFails() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        Integer[] configuredTagIds =
-                profile.targeting.scoringTargets.keySet().toArray(new Integer[0]);
-        assertTrue("Phoenix test profile must contain both alliance targets",
-                configuredTagIds.length >= 2);
-        int firstTagId = configuredTagIds[0];
-        int secondTagId = configuredTagIds[1];
-
-        Set<Integer> eligibleTagIds = new LinkedHashSet<Integer>();
-        eligibleTagIds.add(firstTagId);
-        int[] eligibilityReads = {0};
-        RuntimeException injectedFailure = new RuntimeException("injected first query failure");
-        FailOncePoseEstimator poseEstimator = new FailOncePoseEstimator(injectedFailure);
-        PhoenixTargeting targeting = new PhoenixTargeting(
-                profile.targeting,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                new CurrentFrameMultipleAprilTagSensor(firstTagId, secondTagId),
-                CameraMountConfig.identity(),
-                poseEstimator,
-                profile.fixedAprilTagLayout,
-                Source.of(clock -> {
-                    eligibilityReads[0]++;
-                    return eligibleTagIds;
-                }),
-                BooleanSource.constant(true),
-                BooleanSource.constant(false)
-        );
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-        PhoenixCapabilities.TargetingStatus initial = targeting.status();
-
-        try {
-            targeting.update(clock);
-            fail("expected injected first guidance-query failure");
-        } catch (RuntimeException actual) {
-            assertSame(injectedFailure, actual);
-        }
-        assertEquals(1, eligibilityReads[0]);
-        assertEquals(1, poseEstimator.reads);
-        assertSame("failed query must not publish a partial status", initial, targeting.status());
-
-        eligibleTagIds.clear();
-        eligibleTagIds.add(secondTagId);
-        targeting.update(clock);
-
-        assertEquals("validated eligibility must remain frozen across query retry",
-                1, eligibilityReads[0]);
-        assertEquals(2, poseEstimator.reads);
-        assertTrue(targeting.status().selection.hasSelection);
-        assertEquals(firstTagId, targeting.status().selection.selectedTagId);
-        assertEquals(Collections.singleton(firstTagId),
-                targeting.status().selection.visibleCandidateIds);
-    }
-
-    @Test
-    public void aimConsumersFailActionablyUntilTargetingPublishesItsRuntime() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                new EmptyAprilTagSensor(),
-                Source.constant(Collections.singleton(
-                        profile.targeting.scoringTargets.keySet().iterator().next()
-                ))
-        );
-        DriveOverlay overlay = targeting.aimOverlay();
-        Task aimTask = targeting.aimTask(new NoopDriveSink(), null);
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-
-        try {
-            targeting.aimOverlay().onEnable(clock);
-            fail("expected overlay enable before targeting.update(clock) to fail");
-        } catch (IllegalStateException expected) {
-            assertActionableTargetingUpdateMessage(expected);
-        }
-
-        try {
-            overlay.get(clock);
-            fail("expected an overlay sample before targeting.update(clock) to fail");
-        } catch (IllegalStateException expected) {
-            assertActionableTargetingUpdateMessage(expected);
-        }
-
-        try {
-            aimTask.start(clock);
-            fail("expected an aim Task start before targeting.update(clock) to fail");
-        } catch (IllegalStateException expected) {
-            assertActionableTargetingUpdateMessage(expected);
-        }
-    }
-
-    @Test
-    public void aimTaskSnapshotsEachInvalidNumericConfigBeforeDeferredStart() {
-        assertDeferredInvalidConfigSnapshot(
-                "positionTolInches",
-                "finite and >= 0",
-                Double.NaN,
-                0.5,
-                new ConfigAnswer() {
-                    @Override
-                    public void set(DriveGuidanceTask.Config config, double value) {
-                        config.positionTolInches = value;
-                    }
-                }
-        );
-        assertDeferredInvalidConfigSnapshot(
-                "headingTolRad",
-                "finite and >= 0",
-                Double.POSITIVE_INFINITY,
-                Math.toRadians(2.0),
-                new ConfigAnswer() {
-                    @Override
-                    public void set(DriveGuidanceTask.Config config, double value) {
-                        config.headingTolRad = value;
-                    }
-                }
-        );
-        assertDeferredInvalidConfigSnapshot(
-                "timeoutSec",
-                "finite and > 0",
-                0.0,
-                1.0,
-                new ConfigAnswer() {
-                    @Override
-                    public void set(DriveGuidanceTask.Config config, double value) {
-                        config.timeoutSec = value;
-                    }
-                }
-        );
-        assertDeferredInvalidConfigSnapshot(
-                "maxNoGuidanceSec",
-                "finite and > 0",
-                Double.NEGATIVE_INFINITY,
-                0.25,
-                new ConfigAnswer() {
-                    @Override
-                    public void set(DriveGuidanceTask.Config config, double value) {
-                        config.maxNoGuidanceSec = value;
-                    }
-                }
-        );
-    }
-
-    @Test
-    public void aimTaskSnapshotsRequestedMaskBeforeDeferredStart() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                new CurrentFrameAprilTagSensor(selectedTagId),
-                Source.constant(Collections.singleton(selectedTagId))
-        );
+    @Test public void aimTaskSnapshotsRequestedMaskBeforeDeferredStart() {
+        Fixture f = new Fixture();
+        RecordingDriveSink sink = new RecordingDriveSink();
         DriveGuidanceTask.Config config = new DriveGuidanceTask.Config();
         config.requestedMask = DriveOverlayMask.NONE;
-        RecordingDriveSink driveSink = new RecordingDriveSink();
-
-        Task aimTask = targeting.aimTask(driveSink, config);
-
+        Task task = f.targeting.aimTask(sink, config);
         config.requestedMask = DriveOverlayMask.OMEGA_ONLY;
-
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-        targeting.update(clock);
-        aimTask.start(clock);
-        aimTask.update(clock);
-
-        assertEquals("the snapshotted NONE mask must not reach the drive sink",
-                0, driveSink.driveCount);
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        task.start(f.clock);
+        task.update(f.clock);
+        assertEquals(0, sink.driveCount);
     }
 
-    @Test
-    public void resetRequiresFreshOverlayWithoutPoisoningTheNextSession() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                new CurrentFrameAprilTagSensor(selectedTagId),
-                Source.constant(Collections.singleton(selectedTagId))
-        );
-        DriveOverlay firstSessionOverlay = targeting.aimOverlay();
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-
-        targeting.update(clock);
-        firstSessionOverlay.onEnable(clock);
-        assertTrue(firstSessionOverlay.get(clock) != null);
-
-        firstSessionOverlay.onDisable(clock);
-        targeting.reset();
-        clock.update(0.02);
-        targeting.update(clock);
-        try {
-            firstSessionOverlay.get(clock);
-            fail("expected an overlay retained across reset to fail");
-        } catch (IllegalStateException expected) {
-            assertTrue(expected.getMessage().contains("reset"));
-            assertTrue(expected.getMessage().contains("fresh aimOverlay"));
-        }
-
-        DriveOverlay secondSessionOverlay = targeting.aimOverlay();
-        secondSessionOverlay.onEnable(clock);
-        assertTrue("a fresh overlay must own an independent next-session lifecycle",
-                secondSessionOverlay.get(clock) != null);
-    }
-
-    @Test
-    public void invalidEligibleTargetSetFailsBeforeSensorSelectionWithActionableErrors() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
-        int unknownTagId = Integer.MAX_VALUE;
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                tagSensor,
-                Source.constant(Collections.singleton(unknownTagId))
-        );
-        LoopClock clock = new LoopClock();
-        clock.update(1.0);
-
-        try {
-            targeting.update(clock);
-            fail("expected an eligible tag absent from the configured catalog to fail");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("eligibleScoringTagIds"));
-            assertTrue(expected.getMessage().contains("scoringTargets"));
-            assertTrue(expected.getMessage().contains(Integer.toString(unknownTagId)));
-        }
-        assertEquals("eligibility must be validated before reading detections", 0, tagSensor.reads);
-        assertFalse(targeting.status().selection.hasSelection);
-    }
-
-    @Test
-    public void nullEmptyAndNullMemberEligibleTargetSetsAreRejected() {
-        PhoenixProfile profile = PhoenixProfile.current();
-        assertInvalidEligibleSet(
-                profile,
-                new NullEligibleTagIdsSource(),
-                "returned null"
-        );
-        assertInvalidEligibleSet(
-                profile,
-                Source.constant(Collections.<Integer>emptySet()),
-                "at least one"
-        );
-        Set<Integer> containsNull = new LinkedHashSet<Integer>();
-        containsNull.add(null);
-        assertInvalidEligibleSet(
-                profile,
-                Source.constant(containsNull),
-                "must not contain null"
-        );
-    }
-
-    private static void assertInvalidEligibleSet(PhoenixProfile profile,
-                                                 Source<Set<Integer>> eligibleTagIds,
-                                                 String expectedMessage) {
-        CountingEmptyAprilTagSensor tagSensor = new CountingEmptyAprilTagSensor();
-        PhoenixTargeting targeting = targetingFor(profile, tagSensor, eligibleTagIds);
-        LoopClock clock = new LoopClock();
-        clock.update(1.0);
-
-        try {
-            targeting.update(clock);
-            fail("expected invalid eligible scoring tags to fail");
-        } catch (IllegalArgumentException expected) {
-            assertTrue(expected.getMessage().contains("eligibleScoringTagIds"));
-            assertTrue(expected.getMessage().contains(expectedMessage));
-        }
-        assertEquals("eligibility must be validated before reading detections", 0, tagSensor.reads);
-    }
-
-    private static PhoenixTargeting targetingFor(PhoenixProfile profile,
-                                                  AprilTagSensor tagSensor,
-                                                  Source<Set<Integer>> eligibleTagIds) {
-        return targetingFor(
-                profile,
-                tagSensor,
-                profile.fixedAprilTagLayout,
-                eligibleTagIds
-        );
-    }
-
-    private static PhoenixTargeting targetingFor(PhoenixProfile profile,
-                                                  AprilTagSensor tagSensor,
-                                                  TagLayout fieldTagLayout,
-                                                  Source<Set<Integer>> eligibleTagIds) {
-        return new PhoenixTargeting(
-                profile.targeting,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                tagSensor,
-                CameraMountConfig.identity(),
-                new NoPoseEstimator(),
-                fieldTagLayout,
-                eligibleTagIds,
-                BooleanSource.constant(true),
-                BooleanSource.constant(false)
-        );
-    }
-
-    private static void assertDeferredInvalidConfigSnapshot(String fieldName,
-                                                            String constraint,
-                                                            double invalidValue,
-                                                            double correctedValue,
-                                                            ConfigAnswer answer) {
-        PhoenixProfile profile = PhoenixProfile.current();
-        int selectedTagId = profile.targeting.scoringTargets.keySet().iterator().next();
-        PhoenixTargeting targeting = targetingFor(
-                profile,
-                new CurrentFrameAprilTagSensor(selectedTagId),
-                Source.constant(Collections.singleton(selectedTagId))
-        );
+    private static void assertInvalidTaskConfig(String name, double invalid, double corrected,
+                                                 ConfigAnswer answer) {
+        Fixture f = new Fixture();
+        RecordingDriveSink sink = new RecordingDriveSink();
         DriveGuidanceTask.Config config = new DriveGuidanceTask.Config();
-        answer.set(config, invalidValue);
-        RecordingDriveSink driveSink = new RecordingDriveSink();
-
-        Task aimTask = targeting.aimTask(driveSink, config);
-        answer.set(config, correctedValue);
-
-        LoopClock clock = new LoopClock();
-        clock.reset(0.0);
-        targeting.update(clock);
-        try {
-            aimTask.start(clock);
-            fail("expected the snapshotted invalid " + fieldName + " to fail at START");
-        } catch (IllegalArgumentException expected) {
-            assertEquals(
-                    "DriveGuidanceTask.Config." + fieldName + " must be " + constraint
-                            + ", got " + invalidValue + ".",
-                    expected.getMessage()
-            );
-        }
-
-        assertEquals("invalid deferred construction must not update the drive sink",
-                0, driveSink.updateCount);
-        assertEquals("invalid deferred construction must not drive",
-                0, driveSink.driveCount);
-        assertEquals("invalid deferred construction must not stop the drive sink",
-                0, driveSink.stopCount);
+        answer.set(config, invalid);
+        Task task = f.targeting.aimTask(sink, config);
+        answer.set(config, corrected);
+        f.publish(Pose3d.zero(), 1.0);
+        f.targeting.update(f.clock);
+        IllegalArgumentException failure = assertThrows(IllegalArgumentException.class,
+                () -> task.start(f.clock));
+        assertTrue(failure.getMessage().contains(name));
+        assertEquals(0, sink.updateCount);
+        assertEquals(0, sink.driveCount);
+        assertEquals(0, sink.stopCount);
     }
 
-    private interface ConfigAnswer {
-        void set(DriveGuidanceTask.Config config, double value);
+    private static void assertUnavailable(Fixture f) {
+        f.targeting.update(f.clock);
+        PhoenixCapabilities.TargetingStatus status = f.targeting.status();
+        assertFalse(status.hasUsablePose);
+        assertFalse(status.hasSuggestedVelocity);
+        assertFalse(status.aimReady);
+        assertFalse(status.aimStatus.hasOmegaError);
+        assertTrue(Double.isNaN(status.suggestedVelocityNative));
+        assertTrue(Double.isNaN(status.cameraToTagRange3dInches));
+        assertEquals(24, status.configuredTagId);
     }
 
-    private static void assertActionableTargetingUpdateMessage(IllegalStateException failure) {
-        assertTrue(failure.getMessage().contains("PhoenixTargeting"));
-        assertTrue(failure.getMessage().contains("update"));
+    private static PhoenixTargeting.Config config() {
+        PhoenixTargeting.Config config = PhoenixTargeting.Config.defaults();
+        config.aimReadyDebounceSec = 0.0;
+        return config;
     }
-
-    private static final class CurrentFrameAprilTagSensor implements AprilTagSensor {
-        private final int tagId;
-        private long lastCycle = Long.MIN_VALUE;
-        private AprilTagDetections last = AprilTagDetections.none();
-
-        CurrentFrameAprilTagSensor(int tagId) {
-            this.tagId = tagId;
-        }
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            if (clock.cycle() != lastCycle) {
-                last = AprilTagDetections.fromFrame(
-                        clock.nowTimestamp(),
-                        Collections.singletonList(AprilTagObservation.target(
-                                tagId,
-                                new Pose3d(36.0, 0.0, 0.0, 0.0, 0.0, 0.0)
-                        ))
-                );
-                lastCycle = clock.cycle();
-            }
-            return last;
-        }
+    private static SimpleTagLayout layout() {
+        return new SimpleTagLayout().addPose(24, pose(36,0,0,0,0,0))
+                .addPose(20, pose(0,36,0,0,0,0));
     }
+    private static Pose3d pose(double x, double y, double z, double yaw, double pitch, double roll) {
+        return new Pose3d(x,y,z,yaw,pitch,roll);
+    }
+    private interface ConfigAnswer { void set(DriveGuidanceTask.Config config, double value); }
 
-    private static final class CurrentFrameNonFiniteRangeAprilTagSensor
-            implements AprilTagSensor {
-        private final int tagId;
-        private long lastCycle = Long.MIN_VALUE;
-        private AprilTagDetections last = AprilTagDetections.none();
-
-        CurrentFrameNonFiniteRangeAprilTagSensor(int tagId) {
-            this.tagId = tagId;
+    private static final class Fixture {
+        final LoopClock clock = new LoopClock();
+        final RecordingPoseEstimator estimator = new RecordingPoseEstimator();
+        final PhoenixTargeting targeting;
+        Integer selectedId = 24;
+        boolean autoAim = true;
+        boolean override;
+        int idReads;
+        int idResets;
+        Fixture() { this(config(), layout(), CameraMountConfig.identity()); }
+        Fixture(PhoenixTargeting.Config config, SimpleTagLayout layout, CameraMountConfig mount) {
+            clock.reset(0.0);
+            targeting = new PhoenixTargeting(config, mount, estimator, layout,
+                    new Source<Integer>() {
+                        @Override public Integer get(LoopClock current) { idReads++; return selectedId; }
+                        @Override public void reset() { idResets++; }
+                    }, BooleanSource.of(() -> autoAim), BooleanSource.of(() -> override));
         }
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            if (clock.cycle() != lastCycle) {
-                last = AprilTagDetections.fromFrame(
-                        clock.nowTimestamp(),
-                        Collections.singletonList(AprilTagObservation.target(
-                                tagId,
-                                new Pose3d(Double.MAX_VALUE, 0.0, 0.0, 0.0, 0.0, 0.0)
-                        ))
-                );
-                lastCycle = clock.cycle();
-            }
-            return last;
+        void publish(Pose3d pose, double quality) {
+            estimator.estimate = new PoseEstimate(pose, true, quality, clock.nowTimestamp());
         }
     }
 
-    private static final class CurrentFrameMultipleAprilTagSensor implements AprilTagSensor {
-        private final int[] tagIds;
-        private long lastCycle = Long.MIN_VALUE;
-        private AprilTagDetections last = AprilTagDetections.none();
-
-        CurrentFrameMultipleAprilTagSensor(int... tagIds) {
-            this.tagIds = tagIds.clone();
-        }
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            if (clock.cycle() != lastCycle) {
-                List<AprilTagObservation> observations =
-                        new ArrayList<AprilTagObservation>();
-                for (int i = 0; i < tagIds.length; i++) {
-                    observations.add(AprilTagObservation.target(
-                            tagIds[i],
-                            new Pose3d(36.0, i * 4.0, 0.0, 0.0, 0.0, 0.0)
-                    ));
-                }
-                last = AprilTagDetections.fromFrame(clock.nowTimestamp(), observations);
-                lastCycle = clock.cycle();
-            }
-            return last;
-        }
-    }
-
-    private static final class CountingCurrentFrameMultipleAprilTagSensor
-            implements AprilTagSensor {
-        private final int[] tagIds;
-        private long lastCycle = Long.MIN_VALUE;
-        private AprilTagDetections last = AprilTagDetections.none();
+    private static final class RecordingPoseEstimator implements AbsolutePoseEstimator {
+        PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
+        RuntimeException failure;
         int reads;
-
-        CountingCurrentFrameMultipleAprilTagSensor(int... tagIds) {
-            this.tagIds = tagIds.clone();
-        }
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            if (clock.cycle() != lastCycle) {
-                reads++;
-                last = currentFrameDetections(clock, tagIds);
-                lastCycle = clock.cycle();
-            }
-            return last;
-        }
-    }
-
-    private static final class FailOnceCurrentFrameMultipleAprilTagSensor
-            implements AprilTagSensor {
-        private final RuntimeException firstFailure;
-        private final int[] tagIds;
-        private long lastCycle = Long.MIN_VALUE;
-        private AprilTagDetections last = AprilTagDetections.none();
-        int reads;
-
-        FailOnceCurrentFrameMultipleAprilTagSensor(RuntimeException firstFailure, int... tagIds) {
-            this.firstFailure = firstFailure;
-            this.tagIds = tagIds.clone();
-        }
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            if (clock.cycle() != lastCycle) {
-                reads++;
-                if (reads == 1) {
-                    throw firstFailure;
-                }
-                last = currentFrameDetections(clock, tagIds);
-                lastCycle = clock.cycle();
-            }
-            return last;
-        }
-    }
-
-    private static AprilTagDetections currentFrameDetections(LoopClock clock, int[] tagIds) {
-        List<AprilTagObservation> observations = new ArrayList<AprilTagObservation>();
-        for (int i = 0; i < tagIds.length; i++) {
-            observations.add(AprilTagObservation.target(
-                    tagIds[i],
-                    new Pose3d(36.0, i * 4.0, 0.0, 0.0, 0.0, 0.0)
-            ));
-        }
-        return AprilTagDetections.fromFrame(clock.nowTimestamp(), observations);
-    }
-
-    private static final class CountingEmptyAprilTagSensor implements AprilTagSensor {
-        int reads;
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
+        int updates;
+        @Override public void update(LoopClock clock) { updates++; }
+        @Override public PoseEstimate getEstimate() {
             reads++;
-            return AprilTagDetections.none();
-        }
-    }
-
-    /** Named test boundary adapter used to verify an invalid advanced Source implementation. */
-    private static final class NullEligibleTagIdsSource implements Source<Set<Integer>> {
-        @Override
-        public Set<Integer> get(LoopClock clock) {
-            return null;
-        }
-    }
-
-    private static final class OmittingTagLayout implements TagLayout {
-        private final TagLayout delegate;
-        private final int omittedTagId;
-
-        OmittingTagLayout(TagLayout delegate, int omittedTagId) {
-            this.delegate = delegate;
-            this.omittedTagId = omittedTagId;
-        }
-
-        @Override
-        public Pose3d getFieldToTagPose(int id) {
-            return id == omittedTagId ? null : delegate.getFieldToTagPose(id);
-        }
-
-        @Override
-        public Set<Integer> ids() {
-            LinkedHashSet<Integer> retained = new LinkedHashSet<Integer>(delegate.ids());
-            retained.remove(omittedTagId);
-            return Collections.unmodifiableSet(retained);
-        }
-    }
-
-    /** Named test boundary adapter; direct Source implementation is not an ordinary robot recipe. */
-    private static final class EmptyAprilTagSensor implements AprilTagSensor {
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            return AprilTagDetections.none();
-        }
-    }
-
-    private static final class NoPoseEstimator implements AbsolutePoseEstimator {
-        private final PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
-
-        @Override
-        public void update(LoopClock clock) {
-            // No stateful localization is needed for this targeting-source test.
-        }
-
-        @Override
-        public PoseEstimate getEstimate() {
+            if (failure != null) throw failure;
             return estimate;
         }
     }
-
-    private static final class FailOncePoseEstimator implements AbsolutePoseEstimator {
-        private final RuntimeException firstFailure;
-        private final PoseEstimate estimate = PoseEstimate.noPose(LoopTimestamp.unavailable());
-        int reads;
-
-        FailOncePoseEstimator(RuntimeException firstFailure) {
-            this.firstFailure = firstFailure;
-        }
-
-        @Override
-        public void update(LoopClock clock) {
-            // Guidance reads the already-owned estimator snapshot in this focused test.
-        }
-
-        @Override
-        public PoseEstimate getEstimate() {
-            reads++;
-            if (reads == 1) {
-                throw firstFailure;
-            }
-            return estimate;
-        }
-    }
-
-    private static final class NoopDriveSink implements DriveCommandSink {
-        @Override
-        public void drive(DriveSignal signal) {
-            // No hardware output is needed for deferred aim-Task construction tests.
-        }
-
-        @Override
-        public void stop() {
-            // No hardware output is owned by this test sink.
-        }
-    }
-
     private static final class RecordingDriveSink implements DriveCommandSink {
         int updateCount;
         int driveCount;
         int stopCount;
+        @Override public void update(LoopClock clock) { updateCount++; }
+        @Override public void drive(DriveSignal signal) { driveCount++; }
+        @Override public void stop() { stopCount++; }
+    }
 
-        @Override
-        public void update(LoopClock clock) {
-            updateCount++;
-        }
-
-        @Override
-        public void drive(DriveSignal signal) {
-            driveCount++;
-        }
-
-        @Override
-        public void stop() {
-            stopCount++;
-        }
+    private static final class RecordingPredictor implements MotionPredictor {
+        PoseEstimate estimate;
+        MotionDelta delta = MotionDelta.none(LoopTimestamp.unavailable());
+        @Override public void update(LoopClock clock) { }
+        @Override public PoseEstimate getEstimate() { return estimate; }
+        @Override public MotionDelta getLatestMotionDelta() { return delta; }
+        @Override public long trajectorySegmentId() { return 0L; }
     }
 }

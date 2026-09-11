@@ -2418,6 +2418,36 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void guidanceDocsSeparateIdentityEvidenceAndPhysicalClaims() throws IOException {
+        Path repository = repositoryRoot();
+        Path framework = repository.resolve("TeamCode/src/main/java/edu/ftcsushi/fw");
+        String principles = readUtf8(framework.resolve("Framework Principles.md"));
+        String guidance = readUtf8(framework.resolve("docs/drive-vision/Drive Guidance.md"));
+        String vision = readUtf8(framework.resolve("docs/drive-vision/Vision Targets.md"));
+        String spatial = readUtf8(framework.resolve("docs/drive-vision/Spatial Queries.md"));
+        assertTrue(principles.contains("Localization owns field-pose estimation and correction"));
+        assertTrue(principles.contains("Target selection owns identity"));
+        assertTrue(guidance.contains("## Choose evidence explicitly"));
+        assertTrue(guidance.contains("## Complete example: approach a visible tag"));
+        assertTrue(guidance.contains("accTitle:") && guidance.contains("accDescr:"));
+        assertTrue(guidance.contains("a zero fallback") || guidance.contains("A zero motor command"));
+        assertTrue(vision.indexOf("**Bearing**") < vision.indexOf("TagSelections\n"));
+        assertTrue(vision.contains("fromVisibleTags") && vision.contains("fromFieldPose"));
+        assertTrue(vision.contains("selectionDecision") && vision.contains("currentSelectedCandidate"));
+        assertTrue(vision.contains("unknown") && vision.contains("not a confirmed empty image"));
+        assertTrue(spatial.contains("adding a layout does not enable a hidden"));
+        for (String guide : Arrays.asList(guidance, vision, spatial)) {
+            assertFalse(guide.contains(".localizationOnly("));
+            assertFalse(guide.contains(".aprilTagsOnly("));
+            assertFalse(guide.contains(".doneAdaptive("));
+        }
+        assertTrue(Files.exists(repository.resolve("TeamCode/src/main/java/edu/ftcsushi/robots/"
+                + "examples/tagalignment/TagAlignmentTeleOp.java")));
+        assertTrue(Files.exists(repository.resolve("TeamCode/src/test/java/edu/ftcsushi/robots/"
+                + "examples/tagalignment/TagAlignmentTest.java")));
+    }
+
+    @Test
     public void trackerApplicationScanProtectsGuidanceWithoutAbsorbingOtherItemInventories() {
         Pattern syntheticApplicationReference = Pattern.compile("(?i)demobot");
         List<String> openingGuidance = Arrays.asList(

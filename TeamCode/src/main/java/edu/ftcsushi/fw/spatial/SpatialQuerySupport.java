@@ -1,8 +1,5 @@
 package edu.ftcsushi.fw.spatial;
 
-import java.util.Collections;
-import java.util.Set;
-
 import edu.ftcsushi.fw.core.geometry.Pose2d;
 import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -16,7 +13,7 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
 final class SpatialQuerySupport {
 
     static final TagSelectionResult NO_SELECTION =
-            TagSelectionResult.none(Collections.<Integer>emptySet());
+            TagSelectionResult.none();
 
     private SpatialQuerySupport() {
         // utility holder
@@ -115,11 +112,13 @@ final class SpatialQuerySupport {
         if (reference instanceof References.SelectedTagPointRef) {
             References.SelectedTagPointRef sp = (References.SelectedTagPointRef) reference;
             TagSelectionResult sel = sp.selection.get(clock);
-            if (sel == null || !sel.hasFreshSelectedObservation) {
+            if (sel == null || !sel.hasSelection) {
                 return null;
             }
             Pose2d tagToPoint = sp.lookup.tagToPoint(sel.selectedTagId);
-            return composeRobotThingFromObservation(sel.selectedObservation, cameraMount, tagToPoint);
+            return composeRobotThingFromObservation(
+                    observationForId(clock, detections, sel.selectedTagId, maxAgeSec),
+                    cameraMount, tagToPoint);
         }
         return null;
     }
@@ -140,11 +139,13 @@ final class SpatialQuerySupport {
         if (reference instanceof References.SelectedTagFrameRef) {
             References.SelectedTagFrameRef sf = (References.SelectedTagFrameRef) reference;
             TagSelectionResult sel = sf.selection.get(clock);
-            if (sel == null || !sel.hasFreshSelectedObservation) {
+            if (sel == null || !sel.hasSelection) {
                 return null;
             }
             Pose2d tagToFrame = sf.lookup.tagToFrame(sel.selectedTagId);
-            return composeRobotThingFromObservation(sel.selectedObservation, cameraMount, tagToFrame);
+            return composeRobotThingFromObservation(
+                    observationForId(clock, detections, sel.selectedTagId, maxAgeSec),
+                    cameraMount, tagToFrame);
         }
         return null;
     }
@@ -152,12 +153,14 @@ final class SpatialQuerySupport {
     static Pose2d composeRobotThingFromObservation(AprilTagObservation obs,
                                                    CameraMountConfig cameraMount,
                                                    Pose2d tagToThing) {
-        if (obs == null || !obs.hasTarget || tagToThing == null) {
+        if (obs == null || !obs.hasTarget || tagToThing == null
+                || !SpatialValidation.isFinite(obs.cameraToTagPose)) {
             return null;
         }
         Pose3d robotToTag = CameraMountLogic.robotToTagPose(cameraMount, obs.cameraToTagPose);
+        if (!SpatialValidation.isFinite(robotToTag)) return null;
         Pose2d robotToThing = robotToTag.toPose2d().then(tagToThing);
-        return new Pose2d(robotToThing.xInches, robotToThing.yInches, robotToThing.headingRad);
+        return SpatialValidation.isFinite(robotToThing) ? robotToThing : null;
     }
 
     static AprilTagObservation observationForId(LoopClock clock,
@@ -182,10 +185,7 @@ final class SpatialQuerySupport {
         }
         if (ref instanceof References.TagPointRef) {
             References.TagPointRef tp = (References.TagPointRef) ref;
-            return fixedTagSelection(
-                    tp.tagId,
-                    observationForId(clock, detections, tp.tagId, maxAgeSec)
-            );
+            return TagSelectionResult.forTagId(tp.tagId);
         }
         if (ref instanceof References.SelectedTagPointRef) {
             TagSelectionResult sel = ((References.SelectedTagPointRef) ref).selection.get(clock);
@@ -203,10 +203,7 @@ final class SpatialQuerySupport {
         }
         if (ref instanceof References.TagFrameRef) {
             References.TagFrameRef tf = (References.TagFrameRef) ref;
-            return fixedTagSelection(
-                    tf.tagId,
-                    observationForId(clock, detections, tf.tagId, maxAgeSec)
-            );
+            return TagSelectionResult.forTagId(tf.tagId);
         }
         if (ref instanceof References.SelectedTagFrameRef) {
             TagSelectionResult sel = ((References.SelectedTagFrameRef) ref).selection.get(clock);
@@ -245,26 +242,6 @@ final class SpatialQuerySupport {
                     maxAgeSec);
         }
         return NO_SELECTION;
-    }
-
-    static TagSelectionResult fixedTagSelection(int tagId, AprilTagObservation obs) {
-        boolean fresh = obs != null && obs.hasTarget;
-        Set<Integer> visibleIds = fresh ? Collections.singleton(tagId) : Collections.<Integer>emptySet();
-        AprilTagObservation shown = fresh ? obs : AprilTagObservation.noTarget();
-        return new TagSelectionResult(
-                fresh,
-                tagId,
-                shown,
-                true,
-                tagId,
-                false,
-                fresh,
-                shown,
-                visibleIds,
-                "fixedTagReference",
-                "fixed tag reference",
-                Double.NaN
-        );
     }
 
 }

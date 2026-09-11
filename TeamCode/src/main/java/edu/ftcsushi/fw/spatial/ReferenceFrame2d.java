@@ -26,8 +26,8 @@ package edu.ftcsushi.fw.spatial;
  *
  * <p>This heading describes the <em>reference frame</em>, not automatically the robot’s desired
  * heading. Guidance decides how to use that heading based on whether you call
- * {@code referenceFrameOrigin(...)}, {@code referenceFrameOffsetInches(...)}, or
- * {@code referenceFrameHeading(...)}.</p>
+ * {@code point(References.framePoint(frame))},
+ * {@code point(References.framePoint(frame, forward, left))}, or {@code frameHeading(frame)}.</p>
  *
  * <h2>Common usage</h2>
  *
@@ -40,9 +40,8 @@ package edu.ftcsushi.fw.spatial;
  *         .andFaceTo()
  *             .frameHeading(backdropFace)
  *         .solveWith()
- *             .localizationOnly()
- *             .localization(poseEstimator)
- *             .doneLocalizationOnly()
+ *             .absolutePose(poseEstimator)
+ *             .doneAbsolutePose()
  *         .build();
  * }</pre>
  *

@@ -36,7 +36,7 @@ public final class SpatialAuthoredGeometryValidationTest {
 
         @Override
         public TagSelectionResult get(LoopClock clock) {
-            return TagSelectionResult.none(Collections.<Integer>emptySet());
+            return TagSelectionResult.none();
         }
     };
 

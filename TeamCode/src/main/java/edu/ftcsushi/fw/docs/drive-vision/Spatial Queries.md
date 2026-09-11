@@ -25,7 +25,7 @@ It does **not** decide which lane wins, and it does **not** command a drivetrain
 
 Use `SpatialQuery` directly when you need raw geometry:
 
-- compare live AprilTag solving against localization fallback
+- compare explicit tag-relative and absolute-pose answers without combining their evidence
 - run a simple PID on a facing error
 - inspect translation/facing solutions for telemetry
 - build a robot-specific mechanism planner that needs field-relative context
@@ -75,7 +75,7 @@ SpatialQuery query = SpatialQuery.builder()
         )
         .solveWith(
                 SpatialSolveSet.builder()
-                        .aprilTags(tagSensor, cameraMount, 0.25)
+                        .relativeAprilTags(tagSensor, cameraMount, 0.25)
                         .absolutePose(globalPoseEstimator, 0.50, 0.10)
                         .build()
         )
@@ -106,7 +106,16 @@ SpatialQuery both = SpatialQuery.builder()
 
 `controlFrames(...)` defaults to `SpatialControlFrames.robotCenter()`. `fixedAprilTagLayout(...)` is
 optional and should be supplied only when a lane or target reference needs trusted field-tag
-geometry.
+geometry. An absolute-pose lane uses it to resolve fixed tag-relative references. A relative-AprilTag
+lane reads only direct observations for the requested tag; adding a layout does not enable a hidden
+tag-to-field solve. To derive field pose from tags, construct an `AprilTagPoseEstimator` and supply
+that estimator to `absolutePose(...)`.
+
+The built-in lanes are constructed only through `SpatialSolveSet.builder()`: `absolutePose(...)`,
+`relativeAprilTags(...)`, and `observedPoints()`. Their defaults are pose age `0.50 s`, pose minimum
+quality `0.10`, and tag age `0.50 s`; explicit overloads change those limits. The advanced
+`add(SpatialSolveLane)` accepts a genuinely custom solver, not a second public spelling for a
+built-in lane. An ordered multi-lane query returns separate answers; it does not blend them.
 
 Use `SpatialQuerySpec.builder()` only when you need a reusable immutable description and separate
 runtime query instances:
@@ -156,10 +165,11 @@ state.
 An observed target and a desired robot destination answer different questions. After
 [locating and selecting a target](<Vision Targets.md>), use
 [`References.observedPoint(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/References.html>)
-for the actual observed point. The stateless
-[`ObservedTargetSpatialSolveLane`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ObservedTargetSpatialSolveLane.html>)
+for the actual observed point. The stateless lane built with
+[`SpatialSolveSet.builder().observedPoints()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialSolveSet.html>)
 solves it in robot coordinates at capture, without pretending the robot has been localized.
-An absolute-pose lane can instead solve the same point in current robot coordinates when the
+An absolute-pose lane can instead solve the same point in robot coordinates at the accepted pose's
+evidence time when the
 observation has a valid capture-time field projection. The camera mount is not a tool frame.
 
 Use `References.approachFrame(source)` when the source returns an
@@ -204,7 +214,7 @@ Pose2d robotToShooterFrame = new Pose2d(8.0, 2.0, Math.toRadians(3.0));
 CameraMountConfig robotToCamera = profile.vision.webcam.cameraMount;
 ```
 
-`robotToShooterFrame` belongs in `SpatialControlFrames.withFacingFrame(...)`. `robotToCamera` belongs in `SpatialSolveSet.aprilTags(...)`.
+`robotToShooterFrame` belongs in `SpatialControlFrames.withFacingFrame(...)`. `robotToCamera` belongs in `SpatialSolveSet.builder().relativeAprilTags(...)`.
 
 For a turret-mounted camera, those frames are still separate:
 
@@ -213,7 +223,7 @@ Pose2d robotToTurretToolZero = new Pose2d(7.0, 2.5, Math.toRadians(10.0));
 TimeAwareSource<CameraMountConfig> turretCameraMount = turretCameraMountHistory;
 
 SpatialSolveSet solveSet = SpatialSolveSet.builder()
-        .aprilTags(turretCameraTags, turretCameraMount, 0.15)
+        .relativeAprilTags(turretCameraTags, turretCameraMount, 0.15)
         .absolutePose(globalPoseEstimator, 0.50, 0.10)
         .build();
 ```
@@ -238,8 +248,9 @@ a history-backed source for its mount.
 
 Fixed-frame factories validate their authored pose immediately. A live `Source` or
 `TimeAwareSource` is runtime evidence and is not sampled during construction. Its owner must publish
-truthful finite poses; a non-finite dynamic frame does not currently have a general framework-wide
-"unavailable" interpretation.
+truthful finite poses. Built-in spatial lanes reject the affected channel if its sampled frame or
+derived geometry is non-finite; another valid channel can still be available. A null or throwing
+historical lookup is a failed read, not permission to substitute the current frame.
 
 A source owner that receives age instead of an absolute Sushi timestamp anchors the measurement
 once:

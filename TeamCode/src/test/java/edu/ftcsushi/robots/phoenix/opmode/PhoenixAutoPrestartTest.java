@@ -51,7 +51,7 @@ public final class PhoenixAutoPrestartTest {
 
         host.runtimeSec = 0.0;
         host.init();
-        Source<Set<Integer>> eligibleTagIds = host.prestart.eligibleScoringTagIds();
+        Source<Integer> eligibleTagIds = host.prestart.selectedScoringTagId();
         LoopClock sampleClock = initializedClock();
 
         IllegalStateException unavailable = expectIllegalState(
@@ -83,19 +83,19 @@ public final class PhoenixAutoPrestartTest {
 
         PhoenixAutoSpec frozen = host.prestart.frozenSpec();
         assertEquals(PhoenixAlliance.BLUE, frozen.alliance);
-        assertEquals(Collections.singleton(expectedBlueTagId), eligibleTagIds.get(sampleClock));
+        assertEquals(Integer.valueOf(expectedBlueTagId), eligibleTagIds.get(sampleClock));
 
         IllegalStateException lateUpdate = expectIllegalState(
                 () -> host.prestart.update(sampleClock)
         );
         assertTrue(lateUpdate.getMessage().contains("already frozen"));
         assertSame(frozen, host.prestart.frozenSpec());
-        assertEquals(Collections.singleton(expectedBlueTagId), eligibleTagIds.get(sampleClock));
+        assertEquals(Integer.valueOf(expectedBlueTagId), eligibleTagIds.get(sampleClock));
 
         IllegalStateException secondFreeze = expectIllegalState(host.prestart::freezeForStart);
         assertTrue(secondFreeze.getMessage().contains("frozen only once"));
         assertSame(frozen, host.prestart.frozenSpec());
-        assertEquals(Collections.singleton(expectedBlueTagId), eligibleTagIds.get(sampleClock));
+        assertEquals(Integer.valueOf(expectedBlueTagId), eligibleTagIds.get(sampleClock));
 
         host.stop();
     }

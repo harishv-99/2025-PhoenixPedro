@@ -23,6 +23,7 @@ import edu.ftcsushi.fw.testing.ManualLoopClock;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -405,7 +406,7 @@ public final class SpatialHeadingMathTest {
     }
 
     @Test
-    public void aprilTagFieldFrameFallbackAdditionCannotOverflow() {
+    public void rawAprilTagLaneDoesNotSolveFieldFramesOrAnUnobservedMappedTag() {
         ManualLoopClock time = new ManualLoopClock(4.0);
         AprilTagDetections detections = detections(
                 time.clock().nowTimestamp(),
@@ -429,24 +430,12 @@ public final class SpatialHeadingMathTest {
         );
         SpatialLaneResult result = lane.solve(request(time.clock(), target, layout));
 
-        assertNotNull(result.facing);
-        assertTrue(Double.isFinite(result.facing.facingErrorRad));
-        assertEquals(
-                SpatialSolveMath.wrappedHeadingSumRad(
-                        Double.MAX_VALUE,
-                        Double.MAX_VALUE
-                ),
-                result.facing.facingErrorRad,
-                0.0
-        );
+        assertNull(result.facing);
 
         FacingTarget2d wrapTarget = SpatialTargets.frameHeading(
-                References.fieldFrame(0.0, 0.0, Math.PI - 0.05),
-                0.10
-        );
+                References.fieldFrame(0.0, 0.0, Math.PI - 0.05), 0.10);
         SpatialLaneResult wrapResult = lane.solve(request(time.clock(), wrapTarget, layout));
-        assertNotNull(wrapResult.facing);
-        assertEquals(-Math.PI + 0.05, wrapResult.facing.facingErrorRad, EPS);
+        assertNull(wrapResult.facing);
 
         FacingTarget2d tagRelativeTarget = SpatialTargets.frameHeading(
                 References.relativeToTagFrame(9, 0.0, 0.0, Double.MAX_VALUE),
@@ -455,20 +444,7 @@ public final class SpatialHeadingMathTest {
         SpatialLaneResult tagRelativeResult = lane.solve(
                 request(time.clock(), tagRelativeTarget, layout)
         );
-        double expectedTagRelativeHeading = SpatialSolveMath.wrappedHeadingSumRad(
-                SpatialSolveMath.wrappedHeadingSumRad(
-                        Double.MAX_VALUE,
-                        Double.MAX_VALUE
-                ),
-                Double.MAX_VALUE
-        );
-        assertNotNull(tagRelativeResult.facing);
-        assertTrue(Double.isFinite(tagRelativeResult.facing.facingErrorRad));
-        assertEquals(
-                expectedTagRelativeHeading,
-                tagRelativeResult.facing.facingErrorRad,
-                0.0
-        );
+        assertNull(tagRelativeResult.facing);
     }
 
     @Test
@@ -486,20 +462,7 @@ public final class SpatialHeadingMathTest {
 
             @Override
             public TagSelectionResult get(LoopClock clock) {
-                return new TagSelectionResult(
-                        false,
-                        -1,
-                        AprilTagObservation.noTarget(),
-                        true,
-                        9,
-                        true,
-                        false,
-                        AprilTagObservation.noTarget(),
-                        Collections.singleton(9),
-                        "test",
-                        "selected",
-                        0.0
-                );
+                return TagSelectionResult.forTagId(9);
             }
         };
         ReferenceFrame2d selectedFrame = References.relativeToSelectedTagFrame(
@@ -528,7 +491,7 @@ public final class SpatialHeadingMathTest {
     }
 
     @Test
-    public void nonzeroDirectTagFieldFallbackAndAbsoluteLanesAgree() {
+    public void nonzeroDirectAndAbsoluteLanesAgreeButOtherRawTagCannotSupplyFieldFallback() {
         ManualLoopClock time = new ManualLoopClock(5.0);
         LoopTimestamp frameTimestamp = time.clock().nowTimestamp();
         Pose3d fieldToRobot = new Pose3d(10.0, -8.0, 0.0, 0.30, 0.0, 0.0);
@@ -588,7 +551,7 @@ public final class SpatialHeadingMathTest {
                 time.clock(), target, layout, robotToFacingFrame));
 
         assertNotNull(direct.facing);
-        assertNotNull(fallback.facing);
+        assertNull(fallback.facing);
         assertNotNull(absolute.facing);
         double expectedErrorRad = Pose2d.wrapToPi(
                 fieldToTargetTag.yawRad
@@ -598,7 +561,6 @@ public final class SpatialHeadingMathTest {
                         - robotToFacingFrame.headingRad
         );
         assertEquals(expectedErrorRad, direct.facing.facingErrorRad, EPS);
-        assertEquals(expectedErrorRad, fallback.facing.facingErrorRad, EPS);
         assertEquals(expectedErrorRad, absolute.facing.facingErrorRad, EPS);
     }
 

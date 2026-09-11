@@ -32,10 +32,9 @@ public final class DriveGuidanceLayoutSnapshotTest {
                 .faceTo()
                     .point(References.relativeToTagPoint(3, 1.0, -2.0))
                 .solveWith()
-                    .localizationOnly()
-                    .localization(new NoPoseEstimator())
+                    .absolutePose(new NoPoseEstimator())
                     .fixedAprilTagLayout(authored)
-                    .doneLocalizationOnly()
+                    .doneAbsolutePose()
                 .build();
 
         TagLayout retained = plan.spec.resolveWith.fixedAprilTagLayout;

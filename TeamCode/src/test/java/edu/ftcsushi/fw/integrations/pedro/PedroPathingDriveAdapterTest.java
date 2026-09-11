@@ -190,7 +190,7 @@ public final class PedroPathingDriveAdapterTest {
                 .translateTo()
                     .fieldPointInches(12.0, 0.0)
                 .solveWith()
-                    .localizationOnlyWithDefaults(estimator)
+                    .absolutePose(estimator).doneAbsolutePose()
                 .build();
         DriveGuidanceTask.Config config = new DriveGuidanceTask.Config();
         config.positionTolInches = 0.25;

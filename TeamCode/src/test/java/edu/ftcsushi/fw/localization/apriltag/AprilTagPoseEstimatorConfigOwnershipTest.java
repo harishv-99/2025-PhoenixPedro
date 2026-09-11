@@ -1,5 +1,7 @@
 package edu.ftcsushi.fw.localization.apriltag;
 
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+
 import org.junit.Test;
 
 import java.util.Collections;
@@ -32,6 +34,7 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         RuntimeException failure = capture(() -> new AprilTagPoseEstimator(
                 sensor,
                 layout,
+                CameraMountConfig.identity(),
                 config
         ));
 
@@ -47,6 +50,7 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         RuntimeException negativeFailure = capture(() -> new AprilTagPoseEstimator(
                 negativeSensor,
                 negativeLayout,
+                CameraMountConfig.identity(),
                 config
         ));
         assertTrue(negativeFailure instanceof IllegalArgumentException);
@@ -62,6 +66,7 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         RuntimeException infiniteFailure = capture(() -> new AprilTagPoseEstimator(
                 infiniteSensor,
                 infiniteLayout,
+                CameraMountConfig.identity(),
                 config
         ));
         assertTrue(infiniteFailure instanceof IllegalArgumentException);
@@ -80,6 +85,7 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         RuntimeException solverFailure = capture(() -> new AprilTagPoseEstimator(
                 sensor,
                 layout,
+                CameraMountConfig.identity(),
                 invalidSolver
         ));
         assertTrue(solverFailure.getMessage().contains(
@@ -88,15 +94,15 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         assertEquals(0, sensor.sampleCount);
 
         AprilTagPoseEstimator.Config nullMount = AprilTagPoseEstimator.Config.defaults();
-        nullMount.cameraMount = null;
         RecordingSensor mountSensor = new RecordingSensor();
         RuntimeException mountFailure = capture(() -> new AprilTagPoseEstimator(
                 mountSensor,
                 layout,
+                (CameraMountConfig) null,
                 nullMount
         ));
         assertTrue(mountFailure instanceof NullPointerException);
-        assertTrue(mountFailure.getMessage().contains("AprilTagPoseEstimator.Config.cameraMount"));
+        assertTrue(mountFailure.getMessage().contains("cameraMount"));
         assertEquals(0, layout.accessCount);
         assertEquals(0, mountSensor.sampleCount);
     }
@@ -110,6 +116,7 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         RuntimeException solverFailure = capture(() -> new AprilTagPoseEstimator(
                 nullSolverSensor,
                 new RecordingLayout(),
+                CameraMountConfig.identity(),
                 nullSolver
         ));
         assertTrue(solverFailure instanceof NullPointerException);
@@ -120,6 +127,7 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         RuntimeException configFailure = capture(() -> new AprilTagPoseEstimator(
                 nullConfigSensor,
                 new RecordingLayout(),
+                CameraMountConfig.identity(),
                 null
         ));
         assertTrue(configFailure instanceof NullPointerException);
@@ -140,12 +148,12 @@ public final class AprilTagPoseEstimatorConfigOwnershipTest {
         AprilTagPoseEstimator estimator = new AprilTagPoseEstimator(
                 clock -> frame,
                 new SimpleTagLayout().addPose(1, pose),
+                CameraMountConfig.identity(),
                 config
         );
 
         config.maxDetectionAgeSec = -1.0;
         config.fieldPoseSolver.rangeSoftnessInches = 0.0;
-        config.cameraMount = null;
         estimator.update(time.clock());
 
         assertTrue(estimator.getEstimate().hasPose);

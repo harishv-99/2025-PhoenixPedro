@@ -56,6 +56,7 @@ import edu.ftcsushi.robots.phoenix.opmode.PhoenixPedroAutoTestOpMode;
 import edu.ftcsushi.robots.phoenix.opmode.PhoenixRedAudienceSafeAuto;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
@@ -162,14 +163,15 @@ public final class PhoenixManagedAutoLifecycleTest {
         int pedroZeroIndex = events.indexOf("pedro.zero");
         assertTrue(pedroZeroIndex > 1);
         assertAllHavePrefix(events.subList(1, pedroZeroIndex), "scoring.");
-        assertAllEqual(
-                events.subList(pedroZeroIndex + 1, events.size() - 1),
-                "targeting.reset"
-        );
+        assertEquals("no borrowed sensor reset belongs between drive stop and camera close",
+                pedroZeroIndex + 2, events.size());
         assertEquals("vision.close", events.get(events.size() - 1));
+        assertEquals(-1, host.capabilities.targeting().status().configuredTagId);
+        assertFalse(host.capabilities.targeting().status().hasUsablePose);
+        assertFalse(host.capabilities.targeting().status().hasSuggestedVelocity);
         assertEquals(1, root.cancelCalls);
         assertEquals(1, drive.stopCalls);
-        assertEquals(1, vision.targetingResetCalls);
+        assertEquals(0, vision.sensorResetCalls);
         assertEquals(1, vision.closeCalls);
 
         int commandWritesAfterStop = hardwareMap.commandWrites;
@@ -179,7 +181,7 @@ public final class PhoenixManagedAutoLifecycleTest {
         assertEquals(commandWritesAfterStop, hardwareMap.commandWrites);
         assertEquals(eventCountAfterStop, events.size());
         assertEquals(1, drive.stopCalls);
-        assertEquals(1, vision.targetingResetCalls);
+        assertEquals(0, vision.sensorResetCalls);
         assertEquals(1, vision.closeCalls);
     }
 
@@ -227,19 +229,12 @@ public final class PhoenixManagedAutoLifecycleTest {
         }
     }
 
-    private static void assertAllEqual(List<String> events, String expected) {
-        assertTrue("Expected at least one " + expected + " event", !events.isEmpty());
-        for (String event : events) {
-            assertEquals(expected, event);
-        }
-    }
-
     private static final class TestHost extends FtcRobotOpMode {
         private final PhoenixProfile profile;
         private final PhoenixRobot.AutoHardwareAssembly autoAssembly;
         private final RecordingPedroDrive drive;
         private final MotionPredictor predictor;
-        private final Source<Set<Integer>> eligibleTags;
+        private final Source<Integer> eligibleTags;
         private final BooleanSource autoAimEnabled;
         private final BooleanSource aimOverride;
         private final RecordingPrestart prestart;
@@ -255,7 +250,7 @@ public final class PhoenixManagedAutoLifecycleTest {
                 PhoenixRobot.AutoHardwareAssembly autoAssembly,
                 RecordingPedroDrive drive,
                 MotionPredictor predictor,
-                Source<Set<Integer>> eligibleTags,
+                Source<Integer> eligibleTags,
                 BooleanSource autoAimEnabled,
                 BooleanSource aimOverride,
                 RecordingPrestart prestart,
@@ -439,21 +434,21 @@ public final class PhoenixManagedAutoLifecycleTest {
         }
     }
 
-    private static final class RecordingEligibleTags implements Source<Set<Integer>> {
-        private final Set<Integer> tagIds;
+    private static final class RecordingEligibleTags implements Source<Integer> {
+        private final Integer tagId;
         private final List<String> events;
         private int sampleCalls;
 
         private RecordingEligibleTags(int tagId, List<String> events) {
-            tagIds = Collections.singleton(tagId);
+            this.tagId = tagId;
             this.events = events;
         }
 
         @Override
-        public Set<Integer> get(LoopClock clock) {
+        public Integer get(LoopClock clock) {
             sampleCalls++;
             events.add("targeting.update");
-            return tagIds;
+            return tagId;
         }
     }
 
@@ -517,12 +512,12 @@ public final class PhoenixManagedAutoLifecycleTest {
 
             @Override
             public void reset() {
-                targetingResetCalls++;
-                events.add("targeting.reset");
+                sensorResetCalls++;
+                events.add("sensor.reset");
             }
         };
         private int readinessCalls;
-        private int targetingResetCalls;
+        private int sensorResetCalls;
         private int closeCalls;
 
         private RecordingVisionLane(List<String> events) {

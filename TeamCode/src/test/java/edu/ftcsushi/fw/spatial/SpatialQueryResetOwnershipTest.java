@@ -93,7 +93,7 @@ public final class SpatialQueryResetOwnershipTest {
 
         @Override
         public TagSelectionResult get(LoopClock clock) {
-            return TagSelectionResult.none(Collections.singleton(5));
+            return TagSelectionResult.none();
         }
 
         @Override

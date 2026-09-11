@@ -86,7 +86,7 @@ last choice opens a read-only summary; it does not create a second confirmation 
 program keeps services, Tasks, bindings, and outputs inert while its clock and presenters continue,
 so the Driver Station retains the actionable readiness message.
 
-## Readiness and target eligibility
+## Readiness and configured target
 
 `PhoenixReadiness.pedroAuto(...)` blocks purpose mismatches, required calibration failures,
 missing selected target/catalog/layout facts, and routes that are not match-ready. Current checked-in
@@ -94,7 +94,8 @@ competition routes remain `INTEGRATION_ONLY`, so match entries intentionally blo
 named Pedro test entry may run that geometry with a persistent test warning.
 
 Target visibility and game-piece uncertainty are not structural readiness. The routine waits for
-the configured bounded interval; if a target is still unavailable, the scoring phase reports its
+a configured target with usable corrected pose and a finite camera-to-tag 3D range suggestion;
+if that evidence is unavailable for the configured bounded interval, the scoring phase reports its
 timeout and `PhoenixPedroPreParkTask` takes the explicit return/park fallback. A pre-reset INIT
 timestamp is never carried across the START clock epoch.
 
@@ -105,10 +106,11 @@ that same-cycle evidence is absent, and its diagnostic reports the predictor's c
 without performing a second hardware poll.
 
 Phoenix constructs targeting from `PhoenixTargeting.Config` plus the fixed layout and the current
-mode's eligibility source. TeleOp and Auto each supply the same singleton shape mapped from their
-own START-frozen `PhoenixAlliance`. Eligibility is validated and applied before preview/sticky
-selection, so an opposite-alliance tag can still support localization through the complete fixed
-layout but cannot become either mode's scoring target.
+mode's selected-id source. TeleOp and Auto each map their START-frozen `PhoenixAlliance` to one
+configured id (RED 24, BLUE 20). Targeting freezes that id and target facts before reading corrected
+pose. An opposite-alliance tag may support localization but cannot become the scoring target.
+Aim and range share admitted pose evidence; camera occlusion alone does not block the attempt.
+The existing bounded wait, speed capture, aim, shot request, queue drain, and fallback remain.
 
 Passing runtime Config validation proves only that the authored software graph is complete, finite,
 and internally coherent. It does not prove motor identity/direction, Pinpoint placement or READY

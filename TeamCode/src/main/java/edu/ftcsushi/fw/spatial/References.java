@@ -35,7 +35,7 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionSource;
  *       selection happens explicitly in a {@link TagSelectionSource}. A reference still resolves
  *       through exactly one tag at any instant.</li>
  *   <li><b>Geometry stays reusable:</b> selected-tag references can be solved from live vision,
- *       from localization after a tag has been selected, or adaptively from both.</li>
+ *       from an explicitly chosen absolute pose, without automatically blending the two.</li>
  * </ul>
  *
  * <h2>Typical usage</h2>
@@ -50,9 +50,8 @@ import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionSource;
  *         .andFaceTo()
  *             .frameHeading(slotFace)
  *         .solveWith()
- *             .localizationOnly()
- *             .localization(poseEstimator)
- *             .doneLocalizationOnly()
+ *             .absolutePose(poseEstimator)
+ *             .doneAbsolutePose()
  *         .build();
  * }</pre>
  */
@@ -214,9 +213,9 @@ public final class References {
      * Creates a point relative to the tag currently selected by {@code selection}, using one
      * common offset for every candidate tag.
      *
-     * <p>When this reference is later promoted through localization, Sushi currently requires
+     * <p>When this reference is solved through absolute pose, Sushi requires
      * every candidate ID exposed by {@code selection} to be present in the fixed layout. That
-     * keeps the reference's localization capability stable instead of depending on which tag
+     * keeps the reference's field-resolution capability stable instead of depending on which tag
      * happened to be selected this cycle.</p>
      */
     public static ReferencePoint2d relativeToSelectedTagPoint(TagSelectionSource selection,
@@ -243,7 +242,7 @@ public final class References {
      * common offset / heading for every candidate tag.
      *
      * <p>Like {@link #relativeToSelectedTagPoint(TagSelectionSource, double, double)},
-     * localization fallback currently requires every candidate ID exposed by {@code selection} to
+     * absolute-pose resolution requires every candidate ID exposed by {@code selection} to
      * exist in the fixed layout.</p>
      */
     public static ReferenceFrame2d relativeToSelectedTagFrame(TagSelectionSource selection,

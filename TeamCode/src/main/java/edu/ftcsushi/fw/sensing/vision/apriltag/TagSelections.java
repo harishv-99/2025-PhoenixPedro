@@ -1,5 +1,6 @@
 package edu.ftcsushi.fw.sensing.vision.apriltag;
 
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -7,718 +8,486 @@ import java.util.Objects;
 import java.util.Set;
 
 import edu.ftcsushi.fw.core.debug.DebugSink;
+import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.source.Source;
+import edu.ftcsushi.fw.core.source.TimeAwareSource;
+import edu.ftcsushi.fw.core.source.TimeAwareSources;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
+import edu.ftcsushi.fw.field.TagLayout;
+import edu.ftcsushi.fw.field.TagLayouts;
+import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
+import edu.ftcsushi.fw.localization.PoseEstimate;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 
 /**
- * Factory helpers for building {@link TagSelectionSource}s.
+ * Choose one tag identity from either actual visible tags or known field tags ranked using the
+ * authoritative robot pose. The two sources share policies and one sticky-selection engine;
+ * neither silently falls back to the other. Candidate geometry uses the one supplied camera mount.
  *
- * <p>A tag selector turns raw AprilTag detections into one semantic answer to "which tag does this
- * behavior mean right now?" The staged builder intentionally asks the required questions in order:</p>
- * <ol>
- *   <li>which tag IDs are candidates,</li>
- *   <li>how fresh a detection must be,</li>
- *   <li>which policy chooses among visible candidates, and</li>
- *   <li>whether the selector previews continuously or latches a sticky selection.</li>
- * </ol>
+ * <p>All live inputs are borrowed: construction never samples them, selection never updates an
+ * estimator, and reset never resets sensors, enable signals, estimators, or mount history. A
+ * fixed layout is snapshotted when built. Historical mounts are requested only at the accepted
+ * evidence timestamp; a null/throwing lookup fails the read, without current-mount substitution.</p>
  *
- * <p>Sticky-only loss behavior is only available after choosing a sticky mode. That keeps continuous
- * preview selectors from seeing irrelevant options such as reacquisition timing.</p>
+ * <p>One successful snapshot commits per clock cycle. Failed reads may retry without partial
+ * latch changes. Reentrant reads/reset are errors. Explicit reset and clock-epoch changes clear
+ * local selection state. A sticky enable is a sampled lifetime: its owner must make release
+ * observable or explicitly reset this selector before starting a new attempt.</p>
  */
 public final class TagSelections {
+    private TagSelections() { }
 
-    private TagSelections() {
-        // Utility class.
+    /** Begin selection from actual detections interpreted with a fixed camera mount. */
+    public static VisibleCandidateStep fromVisibleTags(Source<AprilTagDetections> detections,
+                                                        CameraMountConfig mount) {
+        return fromVisibleTags(detections, TimeAwareSources.fixed(Objects.requireNonNull(mount, "mount")));
     }
 
-    /**
-     * Starts building a selection source from raw detections.
-     *
-     * @param detections source of raw AprilTag detections sampled by this selector
-     * @return the first staged builder step, which requires candidate IDs
-     */
-    public static CandidateStep from(Source<AprilTagDetections> detections) {
-        return new Builder(detections);
+    /** Advanced borrowed history: lookup uses the camera frame's original capture timestamp. */
+    public static VisibleCandidateStep fromVisibleTags(Source<AprilTagDetections> detections,
+                                                        TimeAwareSource<CameraMountConfig> mount) {
+        Builder builder = new Builder(Objects.requireNonNull(detections, "detections"), null, null, mount);
+        return ids -> {
+            builder.among(ids);
+            return age -> { builder.freshWithinSec(age); return builder; };
+        };
     }
 
-    /**
-     * First selection-builder step. Choose the set of IDs the selector is allowed to consider.
-     */
-    public interface CandidateStep {
-        /**
-         * Candidate tag IDs to choose among.
-         *
-         * <p>The order is preserved for policies that care about configured priority, but the
-         * default policies may ignore order.</p>
-         *
-         * @param candidateIds non-empty set of non-negative AprilTag IDs
-         * @return the freshness step
-         */
-        FreshnessStep among(Set<Integer> candidateIds);
+    /** Begin selection among fixed field tags using a borrowed authoritative pose and fixed mount. */
+    public static FieldPoseCandidateStep fromFieldPose(AbsolutePoseEstimator pose, TagLayout layout,
+                                                       CameraMountConfig mount) {
+        return fromFieldPose(pose, layout, TimeAwareSources.fixed(Objects.requireNonNull(mount, "mount")));
     }
 
-    /**
-     * Freshness step. Choose how old a detection may be before it is ignored.
-     */
-    public interface FreshnessStep {
-        /**
-         * Uses only detections whose sensor-frame age is less than or equal to this many seconds.
-         *
-         * @param maxAgeSec maximum allowed detection age in seconds; must be finite and non-negative
-         * @return the policy step
-         */
+    /** Advanced borrowed history: mount lookup uses the accepted pose evidence timestamp. */
+    public static FieldPoseCandidateStep fromFieldPose(AbsolutePoseEstimator pose, TagLayout layout,
+                                                       TimeAwareSource<CameraMountConfig> mount) {
+        Builder builder = new Builder(null, Objects.requireNonNull(pose, "pose"),
+                Objects.requireNonNull(layout, "layout"), mount);
+        return ids -> {
+            builder.among(ids);
+            return age -> {
+                builder.freshWithinSec(age);
+                return quality -> { builder.minQuality(quality); return builder; };
+            };
+        };
+    }
+
+    /** Choose the eligible observed tag IDs. */
+    public interface VisibleCandidateStep {
+        /** Snapshot a nonempty set of non-negative IDs. */
+        VisibleFreshnessStep among(Set<Integer> candidateIds);
+    }
+
+    /** Choose the inclusive maximum age of an actual frame. */
+    public interface VisibleFreshnessStep {
+        /** Require finite non-negative age in seconds. */
         PolicyStep freshWithinSec(double maxAgeSec);
     }
 
-    /**
-     * Policy step. Choose how a preview winner is selected from the fresh candidates.
-     */
+    /** Choose eligible fixed tag IDs; every ID must occur in the retained field layout. */
+    public interface FieldPoseCandidateStep {
+        /** Snapshot a nonempty set of non-negative IDs. */
+        FieldPoseFreshnessStep among(Set<Integer> candidateIds);
+    }
+
+    /** Choose the inclusive maximum age of the robot-pose evidence. */
+    public interface FieldPoseFreshnessStep {
+        /** Require finite non-negative age in seconds. */
+        FieldPoseQualityStep freshWithinSec(double maxAgeSec);
+    }
+
+    /** Pose selection requires an explicit producer-quality gate, not a visibility claim. */
+    public interface FieldPoseQualityStep {
+        /** Require a finite score in [0,1]; even zero rejects unknown or invalid runtime quality. */
+        PolicyStep minQuality(double minQuality);
+    }
+
+    /** Choose the same stateless ranking policy for either evidence source. */
     public interface PolicyStep {
-        /**
-         * Uses the supplied stateless policy to choose the preview winner each loop.
-         *
-         * @param policy policy that chooses among fresh candidate observations
-         * @return the mode step
-         */
+        /** A custom policy must return an exact candidate from its supplied immutable list. */
         ModeStep choose(TagSelectionPolicy policy);
     }
 
-    /**
-     * Mode step. Choose whether selection is continuous or sticky.
-     */
+    /** Choose continuous identity or a bounded application-owned commitment lifetime. */
     public interface ModeStep {
-        /**
-         * Tracks the current preview every loop. The preview and selected tag are the same.
-         *
-         * @return a build step with no sticky-only options
-         */
+        /** Select the current preview every cycle. */
         BuildStep continuous();
-
-        /**
-         * Latches a selected tag while {@code enabled} is true and clears the selection while false.
-         *
-         * <p>After this choice, explicitly choose whether the selector should hold the original
-         * tag while enabled or reacquire a different visible tag after loss.</p>
-         *
-         * @param enabled source that owns the sticky-enabled lifecycle
-         * @return the sticky-while-enabled loss-behavior step
-         */
+        /** Hold a selection while this borrowed enable is true; false releases it. */
         StickyWhenLossStep stickyWhen(BooleanSource enabled);
-
-        /**
-         * Latches the first valid tag and keeps selection state until {@link TagSelectionSource#reset()}
-         * or until the configured sticky loss behavior clears/reacquires it.
-         *
-         * @return the sticky-until-reset loss-behavior step
-         */
+        /** Hold a selection until explicit reset or a clock epoch change. */
         StickyUntilResetLossStep stickyUntilReset();
     }
 
-    /**
-     * Loss-behavior step for selectors that are sticky only while an enable source is true.
-     */
+    /** Explicit loss policy for an enabled attempt. */
     public interface StickyWhenLossStep {
-        /**
-         * Keeps the selected tag identity while enabled, even if it is temporarily not fresh.
-         * The selected identity is cleared as soon as the enable source becomes false.
-         *
-         * @return the build step
-         */
+        /** Retain identity without current geometry until disabled. */
         BuildStep holdUntilDisabled();
-
-        /**
-         * Allows the selector to clear or reacquire after the selected tag has been lost for the
-         * supplied number of seconds while still enabled.
-         *
-         * @param reacquireAfterLossSec loss duration in seconds before a sticky selector may
-         *                              reacquire; must be finite and non-negative
-         * @return the build step
-         */
-        BuildStep reacquireAfterLossSec(double reacquireAfterLossSec);
+        /** Allow another choice after an inclusive finite, non-negative loss duration in seconds. */
+        BuildStep reacquireAfterLossSec(double seconds);
     }
 
-    /**
-     * Loss-behavior step for selectors that stay sticky until reset.
-     */
+    /** Explicit loss policy for a reset-owned commitment. */
     public interface StickyUntilResetLossStep {
-        /**
-         * Keeps the selected tag identity until {@link TagSelectionSource#reset()} is called.
-         *
-         * @return the build step
-         */
+        /** Retain identity without current geometry until local reset or clock epoch change. */
         BuildStep holdUntilReset();
-
-        /**
-         * Allows the selector to clear or reacquire after the selected tag has been lost for the
-         * supplied number of seconds.
-         *
-         * @param reacquireAfterLossSec loss duration in seconds before a sticky selector may
-         *                              reacquire; must be finite and non-negative
-         * @return the build step
-         */
-        BuildStep reacquireAfterLossSec(double reacquireAfterLossSec);
+        /** Allow another choice after an inclusive finite, non-negative loss duration in seconds. */
+        BuildStep reacquireAfterLossSec(double seconds);
     }
 
-    /**
-     * Final build step. All required selection questions have been answered.
-     */
+    /** All required questions answered. */
     public interface BuildStep {
-        /**
-         * Builds the stateful selector source.
-         */
+        /** Build an independent local selector; live dependencies remain borrowed. */
         TagSelectionSource build();
     }
 
-    private static final class Builder implements CandidateStep,
-            FreshnessStep,
-            PolicyStep,
-            ModeStep,
-            StickyWhenLossStep,
-            StickyUntilResetLossStep,
-            BuildStep {
+    private enum Mode { CONTINUOUS, STICKY_WHEN, STICKY_UNTIL_RESET }
+
+    /** Shared configuration and sticky stages; source-specific required stages remain distinct. */
+    private static final class Builder implements PolicyStep, ModeStep, StickyWhenLossStep,
+            StickyUntilResetLossStep, BuildStep {
         private final Source<AprilTagDetections> detections;
-        private Set<Integer> candidateIds;
+        private final AbsolutePoseEstimator pose;
+        private final TagLayout layout;
+        private final TimeAwareSource<CameraMountConfig> mount;
+        private Set<Integer> ids;
         private double maxAgeSec = Double.NaN;
+        private double minQuality = Double.NaN;
         private TagSelectionPolicy policy;
         private Mode mode;
         private BooleanSource enabled;
-        private double reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+        private double reacquireSec = Double.POSITIVE_INFINITY;
+        private boolean lossChosen;
 
-        Builder(Source<AprilTagDetections> detections) {
-            this.detections = Objects.requireNonNull(detections, "detections");
+        Builder(Source<AprilTagDetections> detections, AbsolutePoseEstimator pose, TagLayout layout,
+                TimeAwareSource<CameraMountConfig> mount) {
+            this.detections = detections;
+            this.pose = pose;
+            this.layout = layout;
+            this.mount = Objects.requireNonNull(mount, "mount");
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public FreshnessStep among(Set<Integer> candidateIds) {
-            Objects.requireNonNull(candidateIds, "candidateIds");
-            if (candidateIds.isEmpty()) {
-                throw new IllegalArgumentException("candidateIds must not be empty");
-            }
-            LinkedHashSet<Integer> ids = new LinkedHashSet<Integer>();
-            for (Integer id : candidateIds) {
-                if (id == null) {
-                    throw new IllegalArgumentException("candidateIds must not contain null");
+        private void among(Set<Integer> candidates) {
+            Objects.requireNonNull(candidates, "candidateIds");
+            if (candidates.isEmpty()) throw new IllegalArgumentException("candidateIds must not be empty");
+            LinkedHashSet<Integer> copy = new LinkedHashSet<>();
+            for (Integer id : candidates) {
+                if (id == null || id < 0) {
+                    throw new IllegalArgumentException("candidateIds must contain non-negative IDs");
                 }
-                if (id.intValue() < 0) {
-                    throw new IllegalArgumentException("candidateIds must be non-negative");
-                }
-                ids.add(id);
+                copy.add(id);
             }
-            this.candidateIds = Collections.unmodifiableSet(ids);
-            return this;
+            ids = Collections.unmodifiableSet(copy);
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public PolicyStep freshWithinSec(double maxAgeSec) {
-            if (!Double.isFinite(maxAgeSec) || maxAgeSec < 0.0) {
-                throw new IllegalArgumentException("maxAgeSec must be finite and >= 0");
-            }
-            this.maxAgeSec = maxAgeSec;
-            return this;
+        private void freshWithinSec(double age) {
+            requireDuration(age, "maxAgeSec");
+            maxAgeSec = age;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public ModeStep choose(TagSelectionPolicy policy) {
+        private void minQuality(double quality) {
+            if (!Double.isFinite(quality) || quality < 0 || quality > 1) {
+                throw new IllegalArgumentException("minQuality must be finite and in [0,1]");
+            }
+            minQuality = quality;
+        }
+
+        @Override public ModeStep choose(TagSelectionPolicy policy) {
             this.policy = Objects.requireNonNull(policy, "policy");
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public BuildStep continuous() {
-            this.mode = Mode.CONTINUOUS;
-            this.enabled = null;
-            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+        @Override public BuildStep continuous() {
+            mode = Mode.CONTINUOUS;
+            enabled = null;
+            lossChosen = true;
+            reacquireSec = Double.POSITIVE_INFINITY;
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public StickyWhenLossStep stickyWhen(BooleanSource enabled) {
-            this.mode = Mode.STICKY_WHEN;
+        @Override public StickyWhenLossStep stickyWhen(BooleanSource enabled) {
+            mode = Mode.STICKY_WHEN;
             this.enabled = Objects.requireNonNull(enabled, "enabled");
-            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+            lossChosen = false;
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public StickyUntilResetLossStep stickyUntilReset() {
-            this.mode = Mode.STICKY_UNTIL_RESET;
-            this.enabled = null;
-            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+        @Override public StickyUntilResetLossStep stickyUntilReset() {
+            mode = Mode.STICKY_UNTIL_RESET;
+            enabled = null;
+            lossChosen = false;
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public BuildStep holdUntilDisabled() {
-            requireMode(Mode.STICKY_WHEN, "holdUntilDisabled()");
-            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+        @Override public BuildStep holdUntilDisabled() {
+            if (mode != Mode.STICKY_WHEN) throw new IllegalStateException("choose stickyWhen(...) first");
+            return hold();
+        }
+
+        @Override public BuildStep holdUntilReset() {
+            if (mode != Mode.STICKY_UNTIL_RESET) throw new IllegalStateException("choose stickyUntilReset() first");
+            return hold();
+        }
+
+        private BuildStep hold() {
+            lossChosen = true;
+            reacquireSec = Double.POSITIVE_INFINITY;
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public BuildStep holdUntilReset() {
-            requireMode(Mode.STICKY_UNTIL_RESET, "holdUntilReset()");
-            this.reacquireAfterLossSec = Double.POSITIVE_INFINITY;
+        @Override public BuildStep reacquireAfterLossSec(double seconds) {
+            if (mode != Mode.STICKY_WHEN && mode != Mode.STICKY_UNTIL_RESET) {
+                throw new IllegalStateException("choose a sticky mode before reacquireAfterLossSec(...)");
+            }
+            requireDuration(seconds, "reacquireAfterLossSec");
+            reacquireSec = seconds;
+            lossChosen = true;
             return this;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public BuildStep reacquireAfterLossSec(double reacquireAfterLossSec) {
-            if (this.mode != Mode.STICKY_WHEN && this.mode != Mode.STICKY_UNTIL_RESET) {
-                throw new IllegalStateException("reacquireAfterLossSec(...) is only valid after choosing a sticky mode");
+        @Override public TagSelectionSource build() {
+            if (ids == null || !Double.isFinite(maxAgeSec) || policy == null || mode == null || !lossChosen
+                    || (pose != null && !Double.isFinite(minQuality))) {
+                throw new IllegalStateException("answer candidate IDs, freshness, pose quality, policy, and mode before build()");
             }
-            if (!Double.isFinite(reacquireAfterLossSec) || reacquireAfterLossSec < 0.0) {
-                throw new IllegalArgumentException("reacquireAfterLossSec must be finite and >= 0");
+            TagLayout fixedLayout = layout == null ? null : TagLayouts.snapshot(layout);
+            if (fixedLayout != null) {
+                for (Integer id : ids) fixedLayout.requireFieldToTagPose(id);
             }
-            this.reacquireAfterLossSec = reacquireAfterLossSec;
-            return this;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public TagSelectionSource build() {
-            if (candidateIds == null || candidateIds.isEmpty()) {
-                throw new IllegalStateException("TagSelections requires among(...) before build()");
-            }
-            if (!Double.isFinite(maxAgeSec) || maxAgeSec < 0.0) {
-                throw new IllegalStateException("TagSelections requires freshWithinSec(...) before build()");
-            }
-            if (policy == null) {
-                throw new IllegalStateException("TagSelections requires choose(...) before build()");
-            }
-            if (mode == null) {
-                throw new IllegalStateException("TagSelections requires continuous(), stickyWhen(...), or stickyUntilReset() before build()");
-            }
-            if (mode == Mode.STICKY_WHEN && enabled == null) {
-                throw new IllegalStateException("stickyWhen(...) requires a BooleanSource");
-            }
-            return new BuiltSelectionSource(detections, candidateIds, maxAgeSec, policy, mode, enabled, reacquireAfterLossSec);
-        }
-
-        private void requireMode(Mode expected, String methodName) {
-            if (mode != expected) {
-                throw new IllegalStateException(methodName + " is only valid after "
-                        + (expected == Mode.STICKY_WHEN ? "stickyWhen(...)" : "stickyUntilReset()"));
-            }
+            return new BuiltSelectionSource(this, fixedLayout);
         }
     }
 
-    private enum Mode {
-        CONTINUOUS,
-        STICKY_WHEN,
-        STICKY_UNTIL_RESET
+    private static void requireDuration(double seconds, String name) {
+        if (!Double.isFinite(seconds) || seconds < 0) {
+            throw new IllegalArgumentException(name + " must be finite and >= 0");
+        }
     }
 
+    /** Owns only local cache, latch, and loss timing. */
     private static final class BuiltSelectionSource implements TagSelectionSource {
         private final Source<AprilTagDetections> detections;
-        private final Set<Integer> candidateIds;
+        private final AbsolutePoseEstimator pose;
+        private final TagLayout layout;
+        private final TimeAwareSource<CameraMountConfig> mount;
+        private final Set<Integer> ids;
         private final double maxAgeSec;
+        private final double minQuality;
         private final TagSelectionPolicy policy;
         private final Mode mode;
         private final BooleanSource enabled;
-        private final double reacquireAfterLossSec;
-
+        private final double reacquireSec;
         private long lastCycle = Long.MIN_VALUE;
-        private TagSelectionResult last = TagSelectionResult.none(Collections.emptySet());
+        private LoopTimestamp lastSampleTimestamp = LoopTimestamp.unavailable();
+        private TagSelectionResult last = TagSelectionResult.none();
+        private State state = new State();
+        private boolean operationInProgress;
 
-        private boolean prevEnabled = false;
-        private int selectedTagId = -1;
-        private boolean latched = false;
-        private String lastPolicyName = "none";
-        private String lastReason = "no selection";
-        private double lastMetricValue = Double.NaN;
-        private double lostSinceSec = Double.NaN;
-        private boolean operationInProgress = false;
-
-        BuiltSelectionSource(Source<AprilTagDetections> detections,
-                             Set<Integer> candidateIds,
-                             double maxAgeSec,
-                             TagSelectionPolicy policy,
-                             Mode mode,
-                             BooleanSource enabled,
-                             double reacquireAfterLossSec) {
-            this.detections = detections;
-            this.candidateIds = candidateIds;
-            this.maxAgeSec = maxAgeSec;
-            this.policy = policy;
-            this.mode = mode;
-            this.enabled = enabled;
-            this.reacquireAfterLossSec = reacquireAfterLossSec;
+        BuiltSelectionSource(Builder builder, TagLayout layout) {
+            detections = builder.detections;
+            pose = builder.pose;
+            this.layout = layout;
+            mount = builder.mount;
+            ids = builder.ids;
+            maxAgeSec = builder.maxAgeSec;
+            minQuality = builder.minQuality;
+            policy = builder.policy;
+            mode = builder.mode;
+            enabled = builder.enabled;
+            reacquireSec = builder.reacquireSec;
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public Set<Integer> candidateIds() {
-            return candidateIds;
-        }
+        @Override public Set<Integer> candidateIds() { return ids; }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public TagSelectionResult get(LoopClock clock) {
-            if (operationInProgress) {
-                throw reentrantLifecycle("sample");
-            }
+        @Override public TagSelectionResult get(LoopClock clock) {
+            if (operationInProgress) throw reentrantLifecycle("sample");
             Objects.requireNonNull(clock, "clock");
-            long cyc = clock.cycle();
-            if (cyc == lastCycle) {
-                return last;
+            if (lastSampleTimestamp.isAvailable() && !Double.isFinite(lastSampleTimestamp.ageSec(clock))) {
+                clearLocal();
             }
-
+            if (lastCycle == clock.cycle()) return last;
             operationInProgress = true;
             try {
-                // Work only against an unpublished copy. Detection acquisition, freshness,
-                // policy, enable, and loss calculations may all fail; none may partially advance
-                // the selector's sticky state or diagnostics.
-                CandidateState candidateState = new CandidateState(
-                        prevEnabled,
-                        selectedTagId,
-                        latched,
-                        lastPolicyName,
-                        lastReason,
-                        lastMetricValue,
-                        lostSinceSec
-                );
-
-                AprilTagDetections dets = Objects.requireNonNull(
-                        detections.get(clock),
-                        "detections returned null"
-                );
-                List<AprilTagObservation> candidates =
-                        dets.freshMatching(clock, candidateIds, maxAgeSec);
-                LinkedHashSet<Integer> visibleIds = new LinkedHashSet<Integer>();
-                for (AprilTagObservation obs : candidates) {
-                    visibleIds.add(obs.id);
+                long cycle = clock.cycle();
+                LoopTimestamp sampledAt = clock.nowTimestamp();
+                State pending = new State(state);
+                Evidence evidence = detections == null ? fieldEvidence(clock) : observedEvidence(clock);
+                TagSelectionChoice preview = policy.choose(evidence.candidates);
+                if (preview != null && !containsIdentity(evidence.candidates, preview.candidate)) {
+                    throw new IllegalArgumentException("TagSelectionPolicy must choose an exact candidate supplied to this invocation");
                 }
-
-                TagSelectionChoice preview = policy.choose(candidates);
-                if (preview != null) {
-                    candidateState.policyName = preview.policyName;
-                    candidateState.reason = preview.reason;
-                    candidateState.metricValue = preview.metricValue;
+                if (mode == Mode.CONTINUOUS) {
+                    pending.decision = preview;
+                    pending.lostSinceSec = Double.NaN;
+                } else {
+                    boolean enabledNow = mode != Mode.STICKY_WHEN || enabled.getAsBoolean(clock);
+                    if (!enabledNow) {
+                        pending.decision = null;
+                        pending.lostSinceSec = Double.NaN;
+                    } else {
+                        if (!pending.prevEnabled || pending.decision == null) pending.decision = preview;
+                        stepLoss(pending, evidence.candidates, preview, clock.nowSec());
+                    }
+                    pending.prevEnabled = enabledNow;
                 }
-
-                switch (mode) {
-                    case CONTINUOUS:
-                        candidateState.result = buildContinuousResult(
-                                preview,
-                                visibleIds,
-                                candidateState.policyName
-                        );
-                        candidateState.prevEnabled = false;
-                        break;
-                    case STICKY_WHEN:
-                        stepStickyWhen(
-                                candidateState,
-                                clock,
-                                preview,
-                                candidates,
-                                visibleIds
-                        );
-                        break;
-                    case STICKY_UNTIL_RESET:
-                    default:
-                        stepStickyUntilReset(
-                                candidateState,
-                                clock,
-                                preview,
-                                candidates,
-                                visibleIds
-                        );
-                        break;
+                int selectedId = pending.decision == null ? -1 : pending.decision.candidate.tagId;
+                TagSelectionResult result = new TagSelectionResult(preview, selectedId,
+                        mode != Mode.CONTINUOUS && selectedId >= 0, pending.decision,
+                        findById(evidence.candidates, selectedId), evidence.visibleIds, evidence.visibilityTime);
+                // A callback must not move the shared heartbeat while this transaction is in flight.
+                if (clock.cycle() != cycle || !Double.isFinite(sampledAt.ageSec(clock))) {
+                    throw new IllegalStateException("TagSelectionSource clock changed during sampling");
                 }
-
-                publish(candidateState);
-                lastCycle = cyc;
-                return last;
+                state = pending;
+                last = result;
+                lastSampleTimestamp = sampledAt;
+                lastCycle = cycle;
+                return result;
             } finally {
                 operationInProgress = false;
             }
         }
 
-        private static TagSelectionResult buildContinuousResult(TagSelectionChoice preview,
-                                                                 Set<Integer> visibleIds,
-                                                                 String priorPolicyName) {
-            if (preview == null) {
-                return new TagSelectionResult(
-                        false,
-                        -1,
-                        AprilTagObservation.noTarget(),
-                        false,
-                        -1,
-                        false,
-                        false,
-                        AprilTagObservation.noTarget(),
-                        visibleIds,
-                        priorPolicyName,
-                        "no preview candidate",
-                        Double.NaN
-                );
-            }
-            return new TagSelectionResult(
-                    true,
-                    preview.observation.id,
-                    preview.observation,
-                    true,
-                    preview.observation.id,
-                    false,
-                    true,
-                    preview.observation,
-                    visibleIds,
-                    preview.policyName,
-                    preview.reason,
-                    preview.metricValue
-            );
-        }
-
-        private void stepStickyWhen(CandidateState state,
-                                    LoopClock clock,
-                                    TagSelectionChoice preview,
-                                    List<AprilTagObservation> candidates,
-                                    Set<Integer> visibleIds) {
-            boolean enabledNow = enabled.getAsBoolean(clock);
-            boolean rising = enabledNow && !state.prevEnabled;
-            state.prevEnabled = enabledNow;
-
-            if (!enabledNow) {
-                clearSelection(state);
-                state.result = new TagSelectionResult(
-                        preview != null,
-                        preview != null ? preview.observation.id : -1,
-                        preview != null ? preview.observation : AprilTagObservation.noTarget(),
-                        false,
-                        -1,
-                        false,
-                        false,
-                        AprilTagObservation.noTarget(),
-                        visibleIds,
-                        preview != null ? preview.policyName : state.policyName,
-                        preview != null ? preview.reason : "selection inactive",
-                        preview != null ? preview.metricValue : Double.NaN
-                );
+        private void stepLoss(State pending, List<TagSelectionCandidate> candidates,
+                              TagSelectionChoice preview, double nowSec) {
+            if (pending.decision == null) return;
+            if (findById(candidates, pending.decision.candidate.tagId) != null) {
+                pending.lostSinceSec = Double.NaN;
                 return;
             }
-
-            if (rising || state.selectedTagId < 0) {
-                if (preview != null) {
-                    latch(state, preview);
-                }
-            }
-
-            state.result = buildStickyResult(state, clock, preview, candidates, visibleIds);
-        }
-
-        private void stepStickyUntilReset(CandidateState state,
-                                          LoopClock clock,
-                                          TagSelectionChoice preview,
-                                          List<AprilTagObservation> candidates,
-                                          Set<Integer> visibleIds) {
-            if (state.selectedTagId < 0 && preview != null) {
-                latch(state, preview);
-            }
-            state.result = buildStickyResult(state, clock, preview, candidates, visibleIds);
-        }
-
-        private TagSelectionResult buildStickyResult(CandidateState state,
-                                                     LoopClock clock,
-                                                     TagSelectionChoice preview,
-                                                     List<AprilTagObservation> candidates,
-                                                     Set<Integer> visibleIds) {
-            AprilTagObservation selectedObs = findById(candidates, state.selectedTagId);
-            boolean hasFreshSelected = selectedObs != null && selectedObs.hasTarget;
-
-            if (state.selectedTagId >= 0) {
-                if (hasFreshSelected) {
-                    state.lostSinceSec = Double.NaN;
-                } else {
-                    double nowSec = clock.nowSec();
-                    if (Double.isNaN(state.lostSinceSec)) {
-                        state.lostSinceSec = nowSec;
-                    }
-
-                    if (Double.isFinite(reacquireAfterLossSec)
-                            && nowSec - state.lostSinceSec >= reacquireAfterLossSec) {
-                        if (preview != null) {
-                            latch(state, preview);
-                            selectedObs = preview.observation;
-                            hasFreshSelected = true;
-                        } else {
-                            clearSelection(state);
-                            selectedObs = AprilTagObservation.noTarget();
-                            hasFreshSelected = false;
-                        }
-                    }
-                }
-            }
-
-            return new TagSelectionResult(
-                    preview != null,
-                    preview != null ? preview.observation.id : -1,
-                    preview != null ? preview.observation : AprilTagObservation.noTarget(),
-                    state.selectedTagId >= 0,
-                    state.selectedTagId,
-                    state.latched,
-                    hasFreshSelected,
-                    hasFreshSelected ? selectedObs : AprilTagObservation.noTarget(),
-                    visibleIds,
-                    preview != null ? preview.policyName : state.policyName,
-                    preview != null ? preview.reason : state.reason,
-                    preview != null ? preview.metricValue : state.metricValue
-            );
-        }
-
-        private static AprilTagObservation findById(List<AprilTagObservation> candidates, int id) {
-            if (id < 0) {
-                return null;
-            }
-            for (AprilTagObservation obs : candidates) {
-                if (obs != null && obs.hasTarget && obs.id == id) {
-                    return obs;
-                }
-            }
-            return null;
-        }
-
-        private static void latch(CandidateState state, TagSelectionChoice choice) {
-            state.selectedTagId = choice.observation.id;
-            state.latched = true;
-            state.policyName = choice.policyName;
-            state.reason = choice.reason;
-            state.metricValue = choice.metricValue;
-            state.lostSinceSec = Double.NaN;
-        }
-
-        private static void clearSelection(CandidateState state) {
-            state.selectedTagId = -1;
-            state.latched = false;
-            state.lostSinceSec = Double.NaN;
-        }
-
-        private void publish(CandidateState state) {
-            prevEnabled = state.prevEnabled;
-            selectedTagId = state.selectedTagId;
-            latched = state.latched;
-            lastPolicyName = state.policyName;
-            lastReason = state.reason;
-            lastMetricValue = state.metricValue;
-            lostSinceSec = state.lostSinceSec;
-            last = state.result;
-        }
-
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void reset() {
-            if (operationInProgress) {
-                throw reentrantLifecycle("reset");
-            }
-            operationInProgress = true;
-            try {
-                detections.reset();
-                if (enabled != null) {
-                    enabled.reset();
-                }
-
-                // Only publish the local reset after the complete owned child reset succeeds.
-                last = TagSelectionResult.none(Collections.emptySet());
-                prevEnabled = false;
-                selectedTagId = -1;
-                latched = false;
-                lastPolicyName = "none";
-                lastReason = "no selection";
-                lastMetricValue = Double.NaN;
-                lostSinceSec = Double.NaN;
-                lastCycle = Long.MIN_VALUE;
-            } finally {
-                operationInProgress = false;
+            if (Double.isNaN(pending.lostSinceSec)) pending.lostSinceSec = nowSec;
+            if (Double.isFinite(reacquireSec) && nowSec - pending.lostSinceSec >= reacquireSec) {
+                pending.decision = preview;
+                pending.lostSinceSec = Double.NaN;
             }
         }
 
-        private static IllegalStateException reentrantLifecycle(String operation) {
-            return new IllegalStateException(
-                    "TagSelectionSource cannot " + operation + " reentrantly while another "
-                            + "sample or reset is in progress; detection, policy, and enable "
-                            + "callbacks must not call back into their owning selector."
-            );
+        private Evidence observedEvidence(LoopClock clock) {
+            AprilTagDetections frame = Objects.requireNonNull(detections.get(clock), "detections returned null");
+            if (!frame.isFresh(clock, maxAgeSec)) return Evidence.empty();
+            ArrayList<TagSelectionCandidate> candidates = new ArrayList<>();
+            LinkedHashSet<Integer> visible = new LinkedHashSet<>();
+            CameraMountConfig frameMount = null;
+            for (AprilTagObservation observation : frame.observations) {
+                if (!ids.contains(observation.id) || !visible.add(observation.id)) continue;
+                if (!finitePose(observation.cameraToTagPose) || !finiteRange(observation.cameraToTagPose)) continue;
+                if (frameMount == null) frameMount = requiredMount(clock, frame.frameTimestamp());
+                Pose3d robotToTag = frameMount.robotToCameraPose().then(observation.cameraToTagPose);
+                if (!finitePose(robotToTag)) continue;
+                candidates.add(new TagSelectionCandidate(observation.id, observation.cameraToTagPose,
+                        robotToTag, TagSelectionCandidate.EvidenceKind.OBSERVED,
+                        frame.frameTimestamp(), observation));
+            }
+            return new Evidence(candidates, visible, frame.frameTimestamp());
         }
 
-        /**
-         * {@inheritDoc}
-         */
-        @Override
-        public void debugDump(DebugSink dbg, String prefix) {
+        private Evidence fieldEvidence(LoopClock clock) {
+            PoseEstimate estimate = pose.getEstimate();
+            if (estimate == null || !estimate.hasPose || !finitePose(estimate.fieldToRobotPose)
+                    || !estimate.timestamp.isFresh(clock, maxAgeSec)
+                    || !Double.isFinite(estimate.quality) || estimate.quality < minQuality
+                    || estimate.quality > 1) return Evidence.empty();
+            CameraMountConfig frameMount = requiredMount(clock, estimate.timestamp);
+            Pose3d fieldToCamera = estimate.fieldToRobotPose.then(frameMount.robotToCameraPose());
+            if (!finitePose(fieldToCamera)) return Evidence.empty();
+            Pose3d cameraToField = fieldToCamera.inverse();
+            Pose3d robotToField = estimate.fieldToRobotPose.inverse();
+            ArrayList<TagSelectionCandidate> candidates = new ArrayList<>();
+            for (Integer id : ids) {
+                Pose3d fieldToTag = layout.requireFieldToTagPose(id);
+                Pose3d cameraToTag = cameraToField.then(fieldToTag);
+                Pose3d robotToTag = robotToField.then(fieldToTag);
+                if (!finitePose(cameraToTag) || !finiteRange(cameraToTag) || !finitePose(robotToTag)) continue;
+                candidates.add(new TagSelectionCandidate(id, cameraToTag, robotToTag,
+                        TagSelectionCandidate.EvidenceKind.FIELD_POSE, estimate.timestamp, null));
+            }
+            return new Evidence(candidates, Collections.emptySet(), LoopTimestamp.unavailable());
+        }
+
+        private CameraMountConfig requiredMount(LoopClock clock, LoopTimestamp timestamp) {
+            return Objects.requireNonNull(mount.getAt(clock, timestamp),
+                    "camera mount history must return a mount at the evidence timestamp; do not substitute current mount");
+        }
+
+        @Override public void reset() {
+            if (operationInProgress) throw reentrantLifecycle("reset");
+            clearLocal();
+        }
+
+        private void clearLocal() {
+            state = new State();
+            last = TagSelectionResult.none();
+            lastCycle = Long.MIN_VALUE;
+            lastSampleTimestamp = LoopTimestamp.unavailable();
+        }
+
+        @Override public void debugDump(DebugSink dbg, String prefix) {
             if (dbg == null) return;
-            String p = (prefix == null || prefix.isEmpty()) ? "tagSelection" : prefix;
-            dbg.addData(p + ".candidateIds", candidateIds.toString())
+            String p = prefix == null || prefix.isEmpty() ? "tagSelection" : prefix;
+            dbg.addData(p + ".candidateIds", ids.toString())
                     .addData(p + ".maxAgeSec", maxAgeSec)
                     .addData(p + ".mode", mode.name())
-                    .addData(p + ".selectedTagId", selectedTagId)
-                    .addData(p + ".latched", latched)
-                    .addData(p + ".reacquireAfterLossSec", reacquireAfterLossSec)
-                    .addData(p + ".reason", lastReason)
-                    .addData(p + ".metricValue", lastMetricValue);
-            detections.debugDump(dbg, p + ".detections");
+                    .addData(p + ".selectedTagId", last.selectedTagId)
+                    .addData(p + ".latched", last.latched)
+                    .addData(p + ".reacquireAfterLossSec", reacquireSec)
+                    .addData(p + ".reason", state.decision == null ? "no selection" : state.decision.reason)
+                    .addData(p + ".metricValue", state.decision == null ? Double.NaN : state.decision.metricValue);
         }
+    }
 
-        /** Unpublished candidate for one all-or-nothing selector observation. */
-        private static final class CandidateState {
-            private boolean prevEnabled;
-            private int selectedTagId;
-            private boolean latched;
-            private String policyName;
-            private String reason;
-            private double metricValue;
-            private double lostSinceSec;
-            private TagSelectionResult result;
+    private static boolean finitePose(Pose3d pose) {
+        return pose != null && Double.isFinite(pose.xInches) && Double.isFinite(pose.yInches)
+                && Double.isFinite(pose.zInches) && Double.isFinite(pose.yawRad)
+                && Double.isFinite(pose.pitchRad) && Double.isFinite(pose.rollRad);
+    }
 
-            private CandidateState(boolean prevEnabled,
-                                   int selectedTagId,
-                                   boolean latched,
-                                   String policyName,
-                                   String reason,
-                                   double metricValue,
-                                   double lostSinceSec) {
-                this.prevEnabled = prevEnabled;
-                this.selectedTagId = selectedTagId;
-                this.latched = latched;
-                this.policyName = policyName;
-                this.reason = reason;
-                this.metricValue = metricValue;
-                this.lostSinceSec = lostSinceSec;
-            }
+    /** A finite coordinate triple can still have an unrepresentable three-dimensional norm. */
+    private static boolean finiteRange(Pose3d pose) {
+        return Double.isFinite(Math.hypot(Math.hypot(pose.xInches, pose.yInches), pose.zInches));
+    }
+
+    private static boolean containsIdentity(List<TagSelectionCandidate> candidates, TagSelectionCandidate chosen) {
+        for (TagSelectionCandidate candidate : candidates) if (candidate == chosen) return true;
+        return false;
+    }
+
+    private static TagSelectionCandidate findById(List<TagSelectionCandidate> candidates, int id) {
+        for (TagSelectionCandidate candidate : candidates) if (candidate.tagId == id) return candidate;
+        return null;
+    }
+
+    private static IllegalStateException reentrantLifecycle(String operation) {
+        return new IllegalStateException("TagSelectionSource cannot " + operation
+                + " reentrantly while another sample or reset is in progress");
+    }
+
+    /** Unpublished transactional selection state. */
+    private static final class State {
+        boolean prevEnabled;
+        TagSelectionChoice decision;
+        double lostSinceSec = Double.NaN;
+        State() { }
+        State(State prior) {
+            prevEnabled = prior.prevEnabled;
+            decision = prior.decision;
+            lostSinceSec = prior.lostSinceSec;
+        }
+    }
+
+    /** One source-normalized snapshot; field geometry deliberately has no visibility evidence. */
+    private static final class Evidence {
+        final List<TagSelectionCandidate> candidates;
+        final Set<Integer> visibleIds;
+        final LoopTimestamp visibilityTime;
+        Evidence(List<TagSelectionCandidate> candidates, Set<Integer> visibleIds, LoopTimestamp visibilityTime) {
+            this.candidates = Collections.unmodifiableList(candidates);
+            this.visibleIds = visibleIds;
+            this.visibilityTime = visibilityTime;
+        }
+        static Evidence empty() {
+            return new Evidence(Collections.emptyList(), Collections.emptySet(), LoopTimestamp.unavailable());
         }
     }
 }

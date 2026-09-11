@@ -41,20 +41,21 @@ public final class ObservedTargetGuidanceTest {
                 .withTranslationFrame(new Pose2d(6, 1, 0.2));
         DriveGuidancePlan objectPlan = DriveGuidance.plan()
                 .translateTo().point(point).andFaceTo().point(point).controlFrames(frames)
-                .solveWith().observationsOnly(DriveGuidanceSpec.LossPolicy.PASS_THROUGH).build();
+                .solveWith().observedPoints(DriveGuidanceSpec.LossPolicy.PASS_THROUGH).build();
         AprilTagDetections detections = AprilTagDetections.fromFrame(capture,
                 Collections.singletonList(AprilTagObservation.target(5, new Pose3d(18, 4, 0, 0, 0, 0))));
         AprilTagSensor tags = clock -> detections;
         ReferencePoint2d tagPoint = References.relativeToTagPoint(5, 0, 0);
         DriveGuidancePlan tagPlan = DriveGuidance.plan()
                 .translateTo().point(tagPoint).andFaceTo().point(tagPoint).controlFrames(frames)
-                .solveWith().aprilTagsOnlyWithDefaults(tags, CameraMountConfig.identity()).build();
+                .solveWith().relativeAprilTags(tags, CameraMountConfig.identity()).doneRelativeAprilTags().build();
         DriveGuidanceStatus object = objectPlan.query().get(time.clock());
         DriveGuidanceStatus tag = tagPlan.query().get(time.clock());
         assertEquals(tag.signal.axial, object.signal.axial, 1e-12);
         assertEquals(tag.signal.lateral, object.signal.lateral, 1e-12);
         assertEquals(tag.signal.omega, object.signal.omega, 1e-12);
-        assertEquals(DriveGuidanceStatus.ChannelSource.OBSERVATIONS, object.omegaSource);
+        assertEquals(DriveGuidanceSpec.SolveMode.OBSERVED_POINTS, object.solveMode);
+        assertTrue(object.hasOmegaError);
     }
 
     @Test public void freshPoseCannotRefreshExpiredTarget() {
@@ -63,7 +64,7 @@ public final class ObservedTargetGuidanceTest {
         TargetObservation2d ball = fieldObservation(time.clock(), pose, 20, 3);
         ReferencePoint2d point = References.observedPoint(selection(ball));
         DriveGuidanceQuery query = DriveGuidance.plan().faceTo().point(point)
-                .solveWith().localizationOnlyWithDefaults(pose).build().query();
+                .solveWith().absolutePose(pose).doneAbsolutePose().build().query();
         assertTrue(query.get(time.clock()).hasOmegaError);
         time.nextCycle(0.21);
         pose.publish(time.clock());
@@ -149,7 +150,7 @@ public final class ObservedTargetGuidanceTest {
     @Test public void observationModeRejectsAuthoredFieldPoint() {
         try {
             DriveGuidance.plan().faceTo().fieldPointInches(10, 2)
-                    .solveWith().observationsOnly(DriveGuidanceSpec.LossPolicy.PASS_THROUGH).build();
+                    .solveWith().observedPoints(DriveGuidanceSpec.LossPolicy.PASS_THROUGH).build();
             fail("A field point requires field-pose evidence");
         } catch (IllegalStateException expected) {
             assertTrue(expected.getMessage().contains("observedPoint"));

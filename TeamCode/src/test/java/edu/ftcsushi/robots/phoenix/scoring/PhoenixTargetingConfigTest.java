@@ -19,8 +19,6 @@ import edu.ftcsushi.fw.field.TagLayout;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.robots.phoenix.PhoenixAlliance;
 import edu.ftcsushi.robots.phoenix.PhoenixProfile;
 
@@ -109,8 +107,8 @@ public final class PhoenixTargetingConfigTest {
         assertEquals(0.50, first.aimReadyToleranceDeg, 0.0);
         assertEquals(0.05, first.aimReadyDebounceSec, 0.0);
         assertEquals(0.05, first.aimMinOmegaCmd, 0.0);
-        assertEquals(0.50, first.selectionMaxAgeSec, 0.0);
-        assertEquals(0.20, first.selectionReacquireSec, 0.0);
+        assertEquals(0.50, first.poseMaxAgeSec, 0.0);
+        assertEquals(0.10, first.poseMinQuality, 0.0);
         assertRawDouble(0.0, first.defaultAimOffset.forwardInches);
         assertRawDouble(0.0, first.defaultAimOffset.leftInches);
 
@@ -151,13 +149,13 @@ public final class PhoenixTargetingConfigTest {
 
         PhoenixTargeting.Config captured = PhoenixTargeting.Config.defaults();
         int selectedId = captured.redAllianceScoringTagId;
-        CountingEmptyAprilTagSensor sensor = new CountingEmptyAprilTagSensor();
+        CountingPoseEstimator sensor = new CountingPoseEstimator();
         PhoenixTargeting targeting = targeting(
                 profile,
                 captured,
                 sensor,
                 profile.fixedAprilTagLayout,
-                Source.constant(Collections.singleton(selectedId))
+                Source.constant(selectedId)
         );
         captured.scoringTargets.get(selectedId).label = null;
         captured.scoringTargets.get(selectedId).aimOffset.forwardInches = Double.NaN;
@@ -168,10 +166,7 @@ public final class PhoenixTargetingConfigTest {
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
         targeting.update(clock);
-        assertEquals("selection and guidance both sample the shared sensor", 2,
-                sensor.sampleCalls);
-        assertEquals("the AprilTag sensor acquires at most once per loop cycle", 1,
-                sensor.acquisitions);
+        assertEquals("targeting captures exactly one borrowed pose", 1, sensor.sampleCalls);
     }
 
     @Test
@@ -203,12 +198,18 @@ public final class PhoenixTargetingConfigTest {
         assertConstructionFailure(profile, config, "aimMinOmegaCmd");
 
         config = PhoenixTargeting.Config.defaults();
-        config.selectionMaxAgeSec = Double.POSITIVE_INFINITY;
-        assertConstructionFailure(profile, config, "selectionMaxAgeSec");
+        config.poseMaxAgeSec = Double.POSITIVE_INFINITY;
+        assertConstructionFailure(profile, config, "poseMaxAgeSec");
 
         config = PhoenixTargeting.Config.defaults();
-        config.selectionReacquireSec = -1.0;
-        assertConstructionFailure(profile, config, "selectionReacquireSec");
+        config.poseMinQuality = -1.0;
+        assertConstructionFailure(profile, config, "poseMinQuality");
+
+        for (double invalidQuality : new double[]{Double.NaN, Double.POSITIVE_INFINITY, 1.01}) {
+            config = PhoenixTargeting.Config.defaults();
+            config.poseMinQuality = invalidQuality;
+            assertConstructionFailure(profile, config, "poseMinQuality");
+        }
 
         config = PhoenixTargeting.Config.defaults();
         config.defaultAimOffset = null;
@@ -229,16 +230,16 @@ public final class PhoenixTargetingConfigTest {
         boundaries.aimReadyToleranceDeg = 0.0;
         boundaries.aimReadyDebounceSec = 0.0;
         boundaries.aimMinOmegaCmd = 0.0;
-        boundaries.selectionMaxAgeSec = 0.0;
-        boundaries.selectionReacquireSec = 0.0;
+        boundaries.poseMaxAgeSec = 0.0;
+        boundaries.poseMinQuality = 0.0;
         boundaries.defaultAimOffset.forwardInches = Double.MAX_VALUE;
         boundaries.defaultAimOffset.leftInches = -Double.MAX_VALUE;
         targeting(
                 profile,
                 boundaries,
-                new CountingEmptyAprilTagSensor(),
+                new CountingPoseEstimator(),
                 profile.fixedAprilTagLayout,
-                Source.constant(Collections.singleton(boundaries.redAllianceScoringTagId))
+                Source.constant(boundaries.redAllianceScoringTagId)
         );
     }
 
@@ -252,44 +253,41 @@ public final class PhoenixTargetingConfigTest {
         config.scoringTargets.get(20).label = null;
         config.scoringTargets.get(20).aimOffset = null;
 
-        CountingEmptyAprilTagSensor sensor = new CountingEmptyAprilTagSensor();
+        CountingPoseEstimator sensor = new CountingPoseEstimator();
         PhoenixTargeting targeting = targeting(
                 profile,
                 config,
                 sensor,
                 profile.fixedAprilTagLayout,
-                Source.constant(Collections.singleton(selectedId))
+                Source.constant(selectedId)
         );
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
         targeting.update(clock);
-        assertEquals("selection and guidance both sample the shared sensor", 2,
-                sensor.sampleCalls);
-        assertEquals("the AprilTag sensor acquires at most once per loop cycle", 1,
-                sensor.acquisitions);
+        assertEquals("targeting captures exactly one borrowed pose", 1, sensor.sampleCalls);
     }
 
     @Test
-    public void eligibleMemberShapePrecedesCatalogAndSelectedFactsPrecedeSensorRead() {
+    public void selectedIdShapePrecedesCatalogAndSelectedFactsPrecedePoseRead() {
         PhoenixProfile profile = PhoenixProfile.current();
         PhoenixTargeting.Config missingCatalog = PhoenixTargeting.Config.defaults();
         missingCatalog.scoringTargets = null;
         assertStartFailure(
                 profile,
                 missingCatalog,
-                Source.constant(Collections.singleton(-1)),
+                Source.constant(-1),
                 profile.fixedAprilTagLayout,
                 "non-negative"
         );
 
-        Set<Integer> nullMember = new LinkedHashSet<Integer>();
-        nullMember.add(null);
         assertStartFailure(
                 profile,
                 missingCatalog,
-                Source.constant(nullMember),
+                new Source<Integer>() {
+                    @Override public Integer get(LoopClock clock) { return null; }
+                },
                 profile.fixedAprilTagLayout,
-                "must not contain null"
+                "non-negative"
         );
 
         PhoenixTargeting.Config invalidTarget = PhoenixTargeting.Config.defaults();
@@ -298,7 +296,7 @@ public final class PhoenixTargetingConfigTest {
         assertStartFailure(
                 profile,
                 invalidTarget,
-                Source.constant(Collections.singleton(selectedId)),
+                Source.constant(selectedId),
                 profile.fixedAprilTagLayout,
                 ".label"
         );
@@ -309,7 +307,7 @@ public final class PhoenixTargetingConfigTest {
         assertStartFailure(
                 profile,
                 invalidTarget,
-                Source.constant(Collections.singleton(selectedId)),
+                Source.constant(selectedId),
                 profile.fixedAprilTagLayout,
                 ".aimOffset"
         );
@@ -320,7 +318,7 @@ public final class PhoenixTargetingConfigTest {
         assertStartFailure(
                 profile,
                 invalidTarget,
-                Source.constant(Collections.singleton(selectedId)),
+                Source.constant(selectedId),
                 profile.fixedAprilTagLayout,
                 "aimOffset.leftInches"
         );
@@ -339,7 +337,7 @@ public final class PhoenixTargetingConfigTest {
         assertStartFailure(
                 profile,
                 config,
-                Source.constant(Collections.singleton(selectedId)),
+                Source.constant(selectedId),
                 overflowingLayout,
                 "composed fieldToAimPoint"
         );
@@ -353,7 +351,7 @@ public final class PhoenixTargetingConfigTest {
         assertStartFailure(
                 profile,
                 config,
-                Source.constant(Collections.singleton(selectedId)),
+                Source.constant(selectedId),
                 nonFiniteLayout,
                 "fixedFieldPose"
         );
@@ -366,9 +364,9 @@ public final class PhoenixTargetingConfigTest {
             targeting(
                     profile,
                     config,
-                    new CountingEmptyAprilTagSensor(),
+                    new CountingPoseEstimator(),
                     profile.fixedAprilTagLayout,
-                    Source.constant(Collections.singleton(24))
+                    Source.constant(24)
             );
             fail("expected targeting construction failure for " + expectedPath);
         } catch (IllegalArgumentException expected) {
@@ -379,10 +377,10 @@ public final class PhoenixTargetingConfigTest {
 
     private static void assertStartFailure(PhoenixProfile profile,
                                            PhoenixTargeting.Config config,
-                                           Source<Set<Integer>> eligible,
+                                           Source<Integer> eligible,
                                            TagLayout layout,
                                            String expectedText) {
-        CountingEmptyAprilTagSensor sensor = new CountingEmptyAprilTagSensor();
+        CountingPoseEstimator sensor = new CountingPoseEstimator();
         PhoenixTargeting targeting = targeting(profile, config, sensor, layout, eligible);
         LoopClock clock = new LoopClock();
         clock.reset(0.0);
@@ -392,24 +390,19 @@ public final class PhoenixTargetingConfigTest {
         } catch (IllegalArgumentException expected) {
             assertTrue(expected.getMessage(), expected.getMessage().contains(expectedText));
         }
-        assertEquals("selected validation must complete before the first sensor sample", 0,
-                sensor.sampleCalls);
-        assertEquals("selected validation must complete before the first sensor acquisition", 0,
-                sensor.acquisitions);
-        assertFalse(targeting.status().selection.hasSelection);
+        assertEquals("selected validation precedes pose sampling", 0, sensor.sampleCalls);
+        assertEquals(-1, targeting.status().configuredTagId);
     }
 
     private static PhoenixTargeting targeting(PhoenixProfile profile,
                                                PhoenixTargeting.Config config,
-                                               AprilTagSensor sensor,
+                                               CountingPoseEstimator sensor,
                                                TagLayout layout,
-                                               Source<Set<Integer>> eligible) {
+                                               Source<Integer> eligible) {
         return new PhoenixTargeting(
                 config,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                sensor,
                 CameraMountConfig.identity(),
-                new NoPoseEstimator(),
+                sensor,
                 layout,
                 eligible,
                 BooleanSource.constant(true),
@@ -438,35 +431,14 @@ public final class PhoenixTargetingConfigTest {
         );
     }
 
-    private static final class CountingEmptyAprilTagSensor implements AprilTagSensor {
+    private static final class CountingPoseEstimator implements AbsolutePoseEstimator {
         int sampleCalls;
-        int acquisitions;
-        long lastCycle = Long.MIN_VALUE;
-        AprilTagDetections snapshot = AprilTagDetections.none();
-
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
+        @Override public void update(LoopClock clock) {
+            throw new AssertionError("targeting must not update borrowed localization");
+        }
+        @Override public PoseEstimate getEstimate() {
             sampleCalls++;
-            if (clock.cycle() != lastCycle) {
-                acquisitions++;
-                lastCycle = clock.cycle();
-                snapshot = AprilTagDetections.none();
-            }
-            return snapshot;
-        }
-    }
-
-    private static final class NoPoseEstimator implements AbsolutePoseEstimator {
-        private final PoseEstimate noPose = PoseEstimate.noPose(LoopTimestamp.unavailable());
-
-        @Override
-        public void update(LoopClock clock) {
-            // The targeting query consumes this owner's existing snapshot.
-        }
-
-        @Override
-        public PoseEstimate getEstimate() {
-            return noPose;
+            return PoseEstimate.noPose(LoopTimestamp.unavailable());
         }
     }
 }

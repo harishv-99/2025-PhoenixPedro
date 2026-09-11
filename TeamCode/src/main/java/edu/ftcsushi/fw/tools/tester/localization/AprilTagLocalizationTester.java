@@ -679,16 +679,16 @@ public final class AprilTagLocalizationTester extends BaseTeleOpTester {
             trackAny = false;
         }
 
-        selection = TagSelections.from(tagSensor)
+        selection = TagSelections.fromVisibleTags(tagSensor, cameraMount)
                 .among(ids)
                 .freshWithinSec(aprilTags.maxDetectionAgeSec)
                 .choose(TagSelectionPolicies.closestRange())
                 .continuous()
                 .build();
 
-        AprilTagPoseEstimator.Config cfg = aprilTags.toAprilTagPoseEstimatorConfig(cameraMount);
+        AprilTagPoseEstimator.Config cfg = aprilTags.toAprilTagPoseEstimatorConfig();
 
-        poseEstimator = new AprilTagPoseEstimator(tagSensor, layout, cfg);
+        poseEstimator = new AprilTagPoseEstimator(tagSensor, layout, cameraMount, cfg);
 
         // Reset sampling when the core solve parameters change.
         samples.clear();

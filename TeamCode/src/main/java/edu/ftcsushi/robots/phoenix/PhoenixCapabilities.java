@@ -7,7 +7,7 @@ import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.drive.DriveCommandSink;
 import edu.ftcsushi.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcsushi.fw.drive.guidance.DriveGuidanceTask;
-import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
+import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.task.Task;
 
 /**
@@ -118,7 +118,14 @@ public final class PhoenixCapabilities {
         public final boolean aimOverride;
         public final double aimToleranceDeg;
         public final double aimReadyToleranceDeg;
-        public final TagSelectionResult selection;
+        /** START-frozen target identity, or -1 before targeting has started. */
+        public final int configuredTagId;
+        /** Corrected pose passed this action's availability, finite, age, and quality gates. */
+        public final boolean hasUsablePose;
+        /** Original pose evidence time, including when evidence is currently unusable. */
+        public final LoopTimestamp poseTimestamp;
+        /** Field-derived camera-origin to selected-tag-center 3D distance, or NaN. */
+        public final double cameraToTagRange3dInches;
         public final DriveGuidanceStatus aimStatus;
         public final String targetLabel;
         public final double aimOffsetForwardInches;
@@ -137,7 +144,10 @@ public final class PhoenixCapabilities {
                                boolean aimOverride,
                                double aimToleranceDeg,
                                double aimReadyToleranceDeg,
-                               TagSelectionResult selection,
+                               int configuredTagId,
+                               boolean hasUsablePose,
+                               LoopTimestamp poseTimestamp,
+                               double cameraToTagRange3dInches,
                                DriveGuidanceStatus aimStatus,
                                String targetLabel,
                                double aimOffsetForwardInches,
@@ -152,7 +162,10 @@ public final class PhoenixCapabilities {
             this.aimOverride = aimOverride;
             this.aimToleranceDeg = aimToleranceDeg;
             this.aimReadyToleranceDeg = aimReadyToleranceDeg;
-            this.selection = selection;
+            this.configuredTagId = configuredTagId;
+            this.hasUsablePose = hasUsablePose;
+            this.poseTimestamp = Objects.requireNonNull(poseTimestamp, "poseTimestamp");
+            this.cameraToTagRange3dInches = cameraToTagRange3dInches;
             this.aimStatus = aimStatus;
             this.targetLabel = targetLabel != null ? targetLabel : "";
             this.aimOffsetForwardInches = aimOffsetForwardInches;
@@ -263,7 +276,7 @@ public final class PhoenixCapabilities {
     }
 
     /**
-     * Capability family for target selection, aim status, and aim execution.
+     * Capability family for the configured scoring target, aim status, and aim execution.
      */
     public interface Targeting {
 

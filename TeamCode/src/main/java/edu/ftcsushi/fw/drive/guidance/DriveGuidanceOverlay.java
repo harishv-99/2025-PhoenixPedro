@@ -24,7 +24,7 @@ final class DriveGuidanceOverlay implements DriveOverlay {
      */
     @Override
     public void onEnable(LoopClock clock) {
-        // Reset adaptive state so first output after enable is predictable.
+        // Reset only this overlay's owned runtime state.
         core.onEnable();
     }
 
@@ -45,7 +45,7 @@ final class DriveGuidanceOverlay implements DriveOverlay {
         if (dbg == null) return;
         DriveGuidanceCore.Step step = core.lastStep();
 
-        dbg.addData(prefix + ".mode", core.lastMode());
+        dbg.addData(prefix + ".solveMode", core.solveMode());
         dbg.addData(prefix + ".mask", step.out.mask.toString());
         dbg.addData(prefix + ".axial", step.out.signal.axial);
         dbg.addData(prefix + ".lateral", step.out.signal.lateral);
@@ -58,10 +58,6 @@ final class DriveGuidanceOverlay implements DriveOverlay {
         if (step.hasOmegaError) {
             dbg.addData(prefix + ".omegaErrorRad", step.omegaErrorRad);
         }
-
-        dbg.addData(prefix + ".aprilTagsInRangeForTranslation", step.aprilTagsInRangeForTranslation);
-        dbg.addData(prefix + ".blendTTranslate", step.blendTTranslate);
-        dbg.addData(prefix + ".blendTOmega", step.blendTOmega);
 
         Pose2d anchor = core.fieldToTranslationFrameAnchor();
         if (anchor != null) {

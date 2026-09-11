@@ -5,12 +5,10 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 import edu.ftcsushi.fw.core.source.Source;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -167,8 +165,8 @@ final class PhoenixAutoPrestart implements RobotProgram.Prestart {
         return new Pose(pose.getX(), pose.getY(), pose.getHeading());
     }
 
-    Source<Set<Integer>> eligibleScoringTagIds() {
-        return Source.of(clock -> Collections.singleton(selectedAllianceTagId(frozenSpec())));
+    Source<Integer> selectedScoringTagId() {
+        return Source.of(clock -> selectedAllianceTagId(frozenSpec()));
     }
 
     private void refreshPolicy() {

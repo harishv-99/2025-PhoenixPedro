@@ -11,9 +11,9 @@ import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
  * freshness policy remains authoritative. Rigid tools work directly; a moving tool requires a
  * truthful capture-time frame provider. The lane borrows sources and has no lifecycle to reset.</p>
  */
-public final class ObservedTargetSpatialSolveLane implements SpatialSolveLane {
+final class ObservedTargetSpatialSolveLane implements SpatialSolveLane {
     /** Creates the stateless observation-backed lane. */
-    public ObservedTargetSpatialSolveLane() { }
+    ObservedTargetSpatialSolveLane() { }
 
     @Override
     public SpatialLaneResult solve(SpatialSolveRequest request) {

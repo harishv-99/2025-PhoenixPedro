@@ -16,7 +16,7 @@ import edu.ftcsushi.fw.localization.PoseEstimate;
  * frame pose at the pose timestamp. This keeps moving mechanism frames aligned with the robot pose
  * used to solve the spatial relationship.</p>
  */
-public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
+final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
 
     public static final double DEFAULT_MAX_AGE_SEC = 0.50;
     public static final double DEFAULT_MIN_QUALITY = 0.10;
@@ -28,12 +28,12 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
     /**
      * Creates an absolute-pose-backed solve lane with default freshness and quality gating.
      */
-    public AbsolutePoseSpatialSolveLane(AbsolutePoseEstimator poseEstimator) {
+    AbsolutePoseSpatialSolveLane(AbsolutePoseEstimator poseEstimator) {
         this(poseEstimator, DEFAULT_MAX_AGE_SEC, DEFAULT_MIN_QUALITY);
     }
 
     /** Creates an absolute-pose-backed solve lane with explicit freshness and quality gating. */
-    public AbsolutePoseSpatialSolveLane(AbsolutePoseEstimator poseEstimator,
+    AbsolutePoseSpatialSolveLane(AbsolutePoseEstimator poseEstimator,
                                         double maxAgeSec,
                                         double minQuality) {
         this.poseEstimator = Objects.requireNonNull(poseEstimator, "poseEstimator");
@@ -41,8 +41,8 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
             throw new IllegalArgumentException(
                     "maxAgeSec must be finite and >= 0, got " + maxAgeSec);
         }
-        if (!Double.isFinite(minQuality)) {
-            throw new IllegalArgumentException("minQuality must be finite, got " + minQuality);
+        if (!Double.isFinite(minQuality) || minQuality < 0.0 || minQuality > 1.0) {
+            throw new IllegalArgumentException("minQuality must be finite and in [0, 1], got " + minQuality);
         }
         this.maxAgeSec = maxAgeSec;
         this.minQuality = minQuality;
@@ -54,9 +54,10 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
         boolean valid = est != null
                 && est.hasPose
                 && est.timestamp.isFresh(request.clock, maxAgeSec)
-                && est.quality >= minQuality;
+                && Double.isFinite(est.quality) && est.quality >= minQuality && est.quality <= 1.0
+                && SpatialValidation.isFinite(est.fieldToRobotPose);
         if (!valid) {
-            return SpatialLaneResult.none();
+            return result(request, null, null);
         }
 
         Pose2d fieldToRobot = est.toPose2d();
@@ -64,13 +65,13 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
         Pose2d facingFrame = request.robotToFacingFrameAt(est.timestamp);
 
         TranslationSolution translation = null;
-        if (request.translationTarget != null) {
+        if (request.translationTarget != null && SpatialValidation.isFinite(translationFrame)) {
             Pose2d fieldToTargetPoint = SpatialQuerySupport.resolveFieldPointTarget(
                     request.translationTarget,
                     request.fixedAprilTagLayout,
                     request.clock
             );
-            if (fieldToTargetPoint != null) {
+            if (SpatialValidation.isFinite(fieldToTargetPoint)) {
                 translation = SpatialSolveMath.translationFromFieldPose(
                         fieldToRobot,
                         translationFrame,
@@ -84,7 +85,8 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
         }
 
         FacingSolution facing = null;
-        if (request.facingTarget instanceof SpatialTargets.FieldHeading) {
+        if (SpatialValidation.isFinite(facingFrame)
+                && request.facingTarget instanceof SpatialTargets.FieldHeading) {
             facing = SpatialSolveMath.facingFromFieldHeading(
                     fieldToRobot,
                     facingFrame,
@@ -92,14 +94,15 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                     est.quality,
                     est.timestamp
             );
-        } else if (request.facingTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
+        } else if (SpatialValidation.isFinite(facingFrame)
+                && request.facingTarget instanceof SpatialTargets.ReferenceFrameHeadingTarget) {
             SpatialTargets.ReferenceFrameHeadingTarget target = (SpatialTargets.ReferenceFrameHeadingTarget) request.facingTarget;
             Pose2d fieldToFrame = SpatialQuerySupport.resolveFieldFrameHeadingTarget(
                     target,
                     request.fixedAprilTagLayout,
                     request.clock
             );
-            if (fieldToFrame != null) {
+            if (SpatialValidation.isFinite(fieldToFrame)) {
                 facing = SpatialSolveMath.facingFromFieldHeading(
                         fieldToRobot,
                         facingFrame,
@@ -111,13 +114,16 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
                         est.timestamp
                 );
             }
-        } else if (request.facingTarget != null) {
+        } else if (SpatialValidation.isFinite(facingFrame) && request.facingTarget != null) {
             Pose2d fieldToFacingPoint = SpatialQuerySupport.resolveFieldPointTarget(
                     request.facingTarget,
                     request.fixedAprilTagLayout,
                     request.clock
             );
-            if (fieldToFacingPoint != null) {
+            Pose2d fieldToFacingFrame = fieldToRobot.then(facingFrame);
+            if (SpatialValidation.isFinite(fieldToFacingPoint)
+                    && SpatialValidation.isFinite(fieldToFacingFrame)
+                    && SpatialValidation.isFinite(fieldToFacingFrame.inverse().then(fieldToFacingPoint))) {
                 facing = SpatialSolveMath.facingFromFieldPoint(
                         fieldToRobot,
                         facingFrame,
@@ -128,6 +134,18 @@ public final class AbsolutePoseSpatialSolveLane implements SpatialSolveLane {
             }
         }
 
+        if (translation != null && (!SpatialValidation.isFinite(translation.robotToTargetPoint)
+                || !SpatialValidation.isFinite(translation.translationFrameToTargetPoint)
+                || !Double.isFinite(translation.frameDistanceInches()))) {
+            translation = null;
+        }
+        if (facing != null && !Double.isFinite(facing.facingErrorRad)) facing = null;
+        return result(request, translation, facing);
+    }
+
+    /** Preserve target identity even when pose or one requested geometry channel is unavailable. */
+    private static SpatialLaneResult result(SpatialSolveRequest request,
+                                             TranslationSolution translation, FacingSolution facing) {
         return SpatialLaneResult.of(
                 SpatialQuerySupport.targetEvidence(translation, request.translationTarget, request.clock),
                 SpatialQuerySupport.targetEvidence(facing, request.facingTarget, request.clock),

@@ -22,8 +22,6 @@ import edu.ftcsushi.fw.core.time.LoopTimestamp;
 import edu.ftcsushi.fw.localization.AbsolutePoseEstimator;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagDetections;
-import edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor;
 import edu.ftcsushi.robots.phoenix.PhoenixProfile;
 
 import static org.junit.Assert.assertEquals;
@@ -137,23 +135,13 @@ public final class PhoenixScoringFlywheelReadySourceTest {
     private static PhoenixTargeting targetingFor(PhoenixProfile profile) {
         return new PhoenixTargeting(
                 profile.targeting,
-                profile.localization.estimation.aprilTags.fieldPoseSolver,
-                new EmptyAprilTagSensor(),
                 CameraMountConfig.identity(),
                 new NoPoseEstimator(),
                 profile.fixedAprilTagLayout,
-                Source.constant(profile.targeting.scoringTargets.keySet()),
+                Source.constant(profile.targeting.redAllianceScoringTagId),
                 BooleanSource.constant(true),
                 BooleanSource.constant(false)
         );
-    }
-
-    /** Named test boundary adapter; no camera resource is needed for flywheel readiness. */
-    private static final class EmptyAprilTagSensor implements AprilTagSensor {
-        @Override
-        public AprilTagDetections get(LoopClock clock) {
-            return AprilTagDetections.none();
-        }
     }
 
     private static final class NoPoseEstimator implements AbsolutePoseEstimator {

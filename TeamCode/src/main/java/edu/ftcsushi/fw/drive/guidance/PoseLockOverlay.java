@@ -4,6 +4,7 @@ import java.util.Objects;
 
 import edu.ftcsushi.fw.core.debug.DebugSink;
 import edu.ftcsushi.fw.core.geometry.Pose2d;
+import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.drive.DriveOverlay;
 import edu.ftcsushi.fw.drive.DriveOverlayMask;
@@ -24,6 +25,11 @@ import edu.ftcsushi.fw.localization.PoseEstimate;
  * <p>This overlay owns its captured target and protects pose sampling by
  * {@link LoopClock#cycle()}. Repeated reads after one successful evaluation return the same
  * result; {@link #onEnable(LoopClock)} establishes a fresh activation and cache boundary.</p>
+ *
+ * <p>Capture and active feedback require fresh, finite six-dimensional pose evidence and finite
+ * quality in the default absolute-pose admission range. If activation cannot capture a valid
+ * target, release and re-enable; later evidence does not silently establish a different target.
+ * After a valid capture, temporary feedback loss passes through until valid evidence returns.</p>
  */
 final class PoseLockOverlay implements DriveOverlay {
 
@@ -49,8 +55,9 @@ final class PoseLockOverlay implements DriveOverlay {
         lastOut = DriveOverlayOutput.zero();
         lastCycle = Long.MIN_VALUE;
 
+        Objects.requireNonNull(clock, "clock");
         PoseEstimate est = poseEstimator.getEstimate();
-        if (est != null && est.hasPose) {
+        if (isUsable(est, clock)) {
             targetFieldToRobot = est.toPose2d();
         }
     }
@@ -68,14 +75,8 @@ final class PoseLockOverlay implements DriveOverlay {
 
         PoseEstimate est = poseEstimator.getEstimate();
 
-        if (targetFieldToRobot == null || est == null || !est.hasPose) {
+        if (targetFieldToRobot == null || !isUsable(est, clock)) {
             // No valid pose: do not override anything.
-            return rememberSuccessfulResult(cycle, DriveOverlayOutput.zero());
-        }
-
-        // Basic age/quality gating.
-        if (!est.timestamp.isFresh(clock, DriveGuidanceSpec.Localization.DEFAULT_MAX_AGE_SEC)
-                || est.quality < DriveGuidanceSpec.Localization.DEFAULT_MIN_QUALITY) {
             return rememberSuccessfulResult(cycle, DriveOverlayOutput.zero());
         }
 
@@ -83,6 +84,11 @@ final class PoseLockOverlay implements DriveOverlay {
 
         // Error from current robot pose to target robot pose, expressed in robot frame.
         Pose2d robotToTarget = fieldToRobot.inverse().then(targetFieldToRobot);
+        if (!Double.isFinite(robotToTarget.xInches) || !Double.isFinite(robotToTarget.yInches)
+                || !Double.isFinite(Math.hypot(robotToTarget.xInches, robotToTarget.yInches))
+                || !Double.isFinite(robotToTarget.headingRad)) {
+            return rememberSuccessfulResult(cycle, DriveOverlayOutput.zero());
+        }
 
         // Translate to reduce position error.
         DriveSignal t = DriveGuidanceControllers.translationCmd(
@@ -104,6 +110,18 @@ final class PoseLockOverlay implements DriveOverlay {
         lastOut = result;
         lastCycle = cycle;
         return result;
+    }
+
+    private static boolean isUsable(PoseEstimate est, LoopClock clock) {
+        if (est == null || !est.hasPose
+                || !est.timestamp.isFresh(clock, DriveGuidanceSpec.AbsolutePose.DEFAULT_MAX_AGE_SEC)
+                || !Double.isFinite(est.quality)
+                || est.quality < DriveGuidanceSpec.AbsolutePose.DEFAULT_MIN_QUALITY
+                || est.quality > 1.0) return false;
+        Pose3d pose = est.fieldToRobotPose;
+        return Double.isFinite(pose.xInches) && Double.isFinite(pose.yInches)
+                && Double.isFinite(pose.zInches) && Double.isFinite(pose.yawRad)
+                && Double.isFinite(pose.pitchRad) && Double.isFinite(pose.rollRad);
     }
 
     /**

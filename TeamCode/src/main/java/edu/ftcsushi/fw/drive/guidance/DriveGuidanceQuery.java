@@ -14,7 +14,7 @@ import edu.ftcsushi.fw.drive.DriveOverlayMask;
  * gates such as “only shoot when facing is within tolerance,” and tuning probes.</p>
  *
  * <p>The object is stateful. It tracks the same runtime-local state as an overlay: latched
- * translation anchors, adaptive blending state, controller state, and its per-cycle result. Create
+ * translation anchors and its per-cycle result. Create
  * one query per independent consumer and reuse it across loop iterations. Selected-tag policies
  * and the other spatial-spec collaborators remain owned by their suppliers. Create each query
  * through {@link DriveGuidancePlan#query()}.</p>

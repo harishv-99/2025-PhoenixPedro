@@ -37,7 +37,7 @@ final class PhoenixTeleOpProgram {
                 profile,
                 requiredHost.gamepad1,
                 requiredHost.gamepad2,
-                prestart.eligibleScoringTagIds()
+                prestart.selectedScoringTagId()
         );
 
         // Consume only after declareTeleOp has installed localization's pre-START restore seam.

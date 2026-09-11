@@ -5,78 +5,34 @@ import java.util.Objects;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.source.Source;
 
-/**
- * Small source-graph helpers built on top of {@link TagSelectionSource}.
- */
+/** Borrowed read projections. Reset never resets the shared selector or any of its inputs. */
 public final class TagSelectionSources {
+    private TagSelectionSources() { }
 
-    private TagSelectionSources() {
-        // Utility class.
-    }
-
-    /**
-     * True when the selector currently has a selected tag ID.
-     */
+    /** True when the selector has an identity, with or without current geometry. */
     public static BooleanSource hasSelection(TagSelectionSource selection) {
         Objects.requireNonNull(selection, "selection");
-        return selection.mapToBoolean(new java.util.function.Predicate<TagSelectionResult>() {
-            /**
-             * {@inheritDoc}
-             */
-            @Override
-            public boolean test(TagSelectionResult result) {
-                return result != null && result.hasSelection;
-            }
-        });
+        return clock -> selection.get(clock).hasSelection;
     }
 
-    /**
-     * True when the selector currently has a fresh observation for its selected tag.
-     */
+    /** True only for a current actual observation, never for pose-inferred geometry. */
     public static BooleanSource hasFreshSelectedObservation(TagSelectionSource selection) {
         Objects.requireNonNull(selection, "selection");
-        return selection.mapToBoolean(new java.util.function.Predicate<TagSelectionResult>() {
-            /**
-             * {@inheritDoc}
-             */
-            @Override
-            public boolean test(TagSelectionResult result) {
-                return result != null && result.hasFreshSelectedObservation;
-            }
-        });
+        return clock -> selection.get(clock).hasFreshSelectedObservation;
     }
 
-    /**
-     * Selected tag ID, or {@code fallbackId} when no selection exists.
-     */
+    /** Current selected identity, or the caller's fallback ID when none is selected. */
     public static Source<Integer> selectedTagId(TagSelectionSource selection, int fallbackId) {
         Objects.requireNonNull(selection, "selection");
-        return selection.map(new java.util.function.Function<TagSelectionResult, Integer>() {
-            /**
-             * {@inheritDoc}
-             */
-            @Override
-            public Integer apply(TagSelectionResult result) {
-                return (result != null && result.hasSelection) ? Integer.valueOf(result.selectedTagId) : Integer.valueOf(fallbackId);
-            }
+        return Source.of(clock -> {
+            TagSelectionResult result = selection.get(clock);
+            return result.hasSelection ? result.selectedTagId : fallbackId;
         });
     }
 
-    /**
-     * The currently selected fresh observation, or {@link AprilTagObservation#noTarget()}.
-     */
+    /** Current actual observation or {@link AprilTagObservation#noTarget()}. */
     public static Source<AprilTagObservation> selectedObservation(TagSelectionSource selection) {
         Objects.requireNonNull(selection, "selection");
-        return selection.map(new java.util.function.Function<TagSelectionResult, AprilTagObservation>() {
-            /**
-             * {@inheritDoc}
-             */
-            @Override
-            public AprilTagObservation apply(TagSelectionResult result) {
-                return (result != null && result.hasFreshSelectedObservation)
-                        ? result.selectedObservation
-                        : AprilTagObservation.noTarget();
-            }
-        });
+        return Source.of(clock -> selection.get(clock).selectedObservation);
     }
 }

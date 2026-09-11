@@ -29,20 +29,20 @@ choices must follow the [`Framework Principles`](<../../fw/Framework Principles.
 | [`PhoenixCapabilities.java`](<PhoenixCapabilities.java>) | Defines the mode-neutral robot actions and capability-owned status snapshots shared by TeleOp and Auto. |
 | [`PhoenixTeleOpControls.java`](<PhoenixTeleOpControls.java>) | Maps driver and operator inputs to capability requests. |
 | [`PhoenixScoring.java`](<scoring/PhoenixScoring.java>) | Owns scoring requests, feed policy, all four scoring Plants, update order, status production, and stop. |
-| [`PhoenixTargeting.java`](<scoring/PhoenixTargeting.java>) | Selects an eligible scoring target and publishes targeting facts and guidance. |
+| [`PhoenixTargeting.java`](<scoring/PhoenixTargeting.java>) | Freezes one alliance target and publishes corrected-pose aim and camera-to-tag 3D range suggestions. |
 | [`PhoenixReadiness.java`](<PhoenixReadiness.java>) | Decides whether a selected mode may start from configuration and route-maturity facts. |
 
 `PhoenixRobot` wires these owners together. Controls and autonomous routines use
 `PhoenixCapabilities`; they do not reach into mechanisms, Plants, FTC devices, or Pedro followers.
 Its only public constructor is `PhoenixRobot(HardwareMap)`. TeleOp supplies its one local
-`PhoenixProfile`, both Gamepads, and targeting-eligibility source to `declareTeleOp(...)`; Auto
+`PhoenixProfile`, both Gamepads, and selected scoring-tag-id source to `declareTeleOp(...)`; Auto
 supplies its local profile and Auto-only runtime roles to `declareAuto(...)`. The root retains no
 aggregate profile or dormant Gamepad dependency.
 
 ## Mode entries
 
 - [`PhoenixTeleOp.java`](<opmode/PhoenixTeleOp.java>) is the competition TeleOp entry. Its INIT
-  screen selects the alliance used for scoring-target eligibility.
+  screen selects the alliance that fixes its scoring-tag id at START.
 - [`PhoenixRedAudienceSafeAuto.java`](<opmode/PhoenixRedAudienceSafeAuto.java>) and
   [`PhoenixBlueAudienceSafeAuto.java`](<opmode/PhoenixBlueAudienceSafeAuto.java>) are fixed-spec
   match Auto entries.

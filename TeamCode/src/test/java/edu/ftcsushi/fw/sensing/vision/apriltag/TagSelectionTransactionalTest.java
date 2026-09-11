@@ -14,6 +14,7 @@ import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.source.BooleanSource;
 import edu.ftcsushi.fw.core.source.Source;
 import edu.ftcsushi.fw.core.time.LoopClock;
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
 import edu.ftcsushi.fw.testing.ManualLoopClock;
 
 import static org.junit.Assert.assertEquals;
@@ -52,7 +53,7 @@ public final class TagSelectionTransactionalTest {
         ManualLoopClock time = new ManualLoopClock();
         MutableDetections detections = new MutableDetections(frame(time.clock(), 1));
         FailingEnabled enabled = new FailingEnabled();
-        TagSelectionSource selection = TagSelections.from(detections)
+        TagSelectionSource selection = TagSelections.fromVisibleTags(detections, CameraMountConfig.identity())
                 .among(setOf(1, 2))
                 .freshWithinSec(1.0)
                 .choose(firstCandidatePolicy())
@@ -62,7 +63,7 @@ public final class TagSelectionTransactionalTest {
 
         TagSelectionResult first = selection.get(time.clock());
         assertEquals(1, first.selectedTagId);
-        assertEquals("tag-1", first.reason);
+        assertEquals("tag-1", first.selectionDecision.reason);
 
         time.nextCycle(0.02);
         detections.value = frame(time.clock(), 2);
@@ -81,7 +82,7 @@ public final class TagSelectionTransactionalTest {
         TagSelectionResult retry = selection.get(time.clock());
         assertEquals(2, retry.previewTagId);
         assertEquals(2, retry.selectedTagId);
-        assertEquals("tag-2", retry.reason);
+        assertEquals("tag-2", retry.selectionDecision.reason);
 
         CapturingDebugSink debugAfterSuccess = new CapturingDebugSink();
         selection.debugDump(debugAfterSuccess, "selector");
@@ -98,7 +99,7 @@ public final class TagSelectionTransactionalTest {
         RuntimeException policyFailure = new RuntimeException("selection policy failed");
         boolean[] failPolicy = {false};
         TagSelectionPolicy firstCandidate = firstCandidatePolicy();
-        TagSelectionSource selection = TagSelections.from(detections)
+        TagSelectionSource selection = TagSelections.fromVisibleTags(detections, CameraMountConfig.identity())
                 .among(setOf(1, 2))
                 .freshWithinSec(1.0)
                 .choose(candidates -> {
@@ -135,7 +136,7 @@ public final class TagSelectionTransactionalTest {
 
         TagSelectionResult recovered = selection.get(time.clock());
         assertEquals(2, recovered.selectedTagId);
-        assertEquals("tag-2", recovered.reason);
+        assertEquals("tag-2", recovered.selectionDecision.reason);
     }
 
     @Test
@@ -161,25 +162,21 @@ public final class TagSelectionTransactionalTest {
     }
 
     @Test
-    public void failedChildResetKeepsTheCommittedLocalSelectionCache() {
+    public void localResetNeverCallsBorrowedChildResetAndAllowsANewRead() {
         ManualLoopClock time = new ManualLoopClock();
         MutableDetections detections = new MutableDetections(frame(time.clock(), 3));
         FailingEnabled enabled = new FailingEnabled();
-        TagSelectionSource selection = TagSelections.from(detections)
+        TagSelectionSource selection = TagSelections.fromVisibleTags(detections, CameraMountConfig.identity())
                 .among(Collections.singleton(3))
                 .freshWithinSec(1.0)
                 .choose(firstCandidatePolicy())
                 .stickyWhen(enabled)
                 .holdUntilDisabled()
                 .build();
-        TagSelectionResult committed = selection.get(time.clock());
+        assertEquals(3, selection.get(time.clock()).selectedTagId);
         RuntimeException failure = new RuntimeException("enable reset failed");
         enabled.resetFailure = failure;
 
-        assertSame(failure, expectRuntime(selection::reset));
-        assertSame(committed, selection.get(time.clock()));
-
-        enabled.resetFailure = null;
         selection.reset();
         assertEquals(3, selection.get(time.clock()).selectedTagId);
         assertEquals(2, detections.sampleCalls);
@@ -189,7 +186,7 @@ public final class TagSelectionTransactionalTest {
             Source<AprilTagDetections> detections,
             int candidateId
     ) {
-        return TagSelections.from(detections)
+        return TagSelections.fromVisibleTags(detections, CameraMountConfig.identity())
                 .among(Collections.singleton(candidateId))
                 .freshWithinSec(1.0)
                 .choose(firstCandidatePolicy())
@@ -202,12 +199,12 @@ public final class TagSelectionTransactionalTest {
             if (candidates.isEmpty()) {
                 return null;
             }
-            AprilTagObservation observation = candidates.get(0);
+            TagSelectionCandidate candidate = candidates.get(0);
             return new TagSelectionChoice(
-                    observation,
+                    candidate,
                     "firstCandidate",
-                    "tag-" + observation.id,
-                    observation.id
+                    "tag-" + candidate.tagId,
+                    candidate.tagId
             );
         };
     }

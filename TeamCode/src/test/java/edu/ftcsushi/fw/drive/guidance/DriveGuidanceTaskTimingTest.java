@@ -216,7 +216,7 @@ public final class DriveGuidanceTaskTimingTest {
                 .translateTo()
                     .fieldPointInches(12.0, 0.0)
                 .solveWith()
-                    .localizationOnlyWithDefaults(estimator)
+                    .absolutePose(estimator).doneAbsolutePose()
                 .build();
     }
 

@@ -269,9 +269,9 @@ public final class PhoenixManagedTeleOpLifecycleTest {
                     profile,
                     gamepad1,
                     gamepad2,
-                    Source.constant(Collections.singleton(
+                    Source.constant(
                             profile.targeting.scoringTagIdFor(PhoenixAlliance.RED)
-                    ))
+                    )
             );
             program.presenter(robot.teleOpPresenter(PhoenixMatchHandoff.RestoreResult.MISSING));
         }

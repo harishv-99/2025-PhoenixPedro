@@ -1,5 +1,7 @@
 package edu.ftcsushi.fw.localization.apriltag;
 
+import edu.ftcsushi.fw.sensing.vision.CameraMountConfig;
+
 import org.junit.Test;
 
 import java.util.Collections;
@@ -42,6 +44,7 @@ public final class AprilTagPoseEstimatorTimestampTest {
         AprilTagPoseEstimator estimator = new AprilTagPoseEstimator(
                 clock -> retainedFrame,
                 new SimpleTagLayout().addPose(5, solvedPose),
+                CameraMountConfig.identity(),
                 config
         );
 
@@ -162,6 +165,7 @@ public final class AprilTagPoseEstimatorTimestampTest {
         return new AprilTagPoseEstimator(
                 sensor,
                 new SimpleTagLayout().addPose(5, tagPose),
+                CameraMountConfig.identity(),
                 config
         );
     }

@@ -4,10 +4,8 @@ import com.qualcomm.robotcore.hardware.Gamepad;
 
 import org.firstinspires.ftc.robotcore.external.Telemetry;
 
-import java.util.Collections;
 import java.util.EnumMap;
 import java.util.Objects;
-import java.util.Set;
 
 import edu.ftcsushi.fw.core.source.Source;
 import edu.ftcsushi.fw.core.time.LoopClock;
@@ -167,11 +165,9 @@ final class PhoenixTeleOpPrestart implements RobotProgram.Prestart {
         refreshReadiness();
     }
 
-    /** Return the selected alliance's one eligible scoring-tag id after the START freeze. */
-    Source<Set<Integer>> eligibleScoringTagIds() {
-        return Source.of(clock -> Collections.singleton(
-                scoringTagIds.get(frozenAlliance())
-        ));
+    /** Return the selected alliance's configured scoring-tag id after the START freeze. */
+    Source<Integer> selectedScoringTagId() {
+        return Source.of(clock -> scoringTagIds.get(frozenAlliance()));
     }
 
     PhoenixAlliance frozenAlliance() {

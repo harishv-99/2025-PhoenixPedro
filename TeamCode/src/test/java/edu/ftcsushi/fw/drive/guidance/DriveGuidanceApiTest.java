@@ -162,9 +162,8 @@ public final class DriveGuidanceApiTest {
                 DriveGuidanceTask.class,
                 DriveGuidancePlan.Tuning.class,
                 DriveGuidanceSpec.RobotRelativePoint.class,
-                DriveGuidanceSpec.AprilTags.class,
-                DriveGuidanceSpec.Localization.class,
-                DriveGuidanceSpec.TranslationTakeover.class,
+                DriveGuidanceSpec.RelativeAprilTags.class,
+                DriveGuidanceSpec.AbsolutePose.class,
                 DriveGuidanceSpec.ResolveWith.class
         };
 
@@ -179,17 +178,46 @@ public final class DriveGuidanceApiTest {
         Method create = DriveGuidanceSpec.ResolveWith.class.getDeclaredMethod(
                 "create",
                 DriveGuidanceSpec.SolveMode.class,
-                DriveGuidanceSpec.AprilTags.class,
-                DriveGuidanceSpec.Localization.class,
+                DriveGuidanceSpec.RelativeAprilTags.class,
+                DriveGuidanceSpec.AbsolutePose.class,
                 TagLayout.class,
-                DriveGuidanceSpec.TranslationTakeover.class,
-                DriveGuidanceSpec.OmegaPolicy.class,
                 DriveGuidanceSpec.LossPolicy.class
         );
         assertFalse("ResolveWith.create(...) must stay builder-internal",
                 Modifier.isPublic(create.getModifiers()));
         assertTrue(Modifier.isStatic(create.getModifiers()));
         assertEquals(DriveGuidanceSpec.ResolveWith.class, create.getReturnType());
+    }
+
+    @Test
+    public void evidenceChoiceRequiresSourceAndExposesOnlyItsSettings() throws Exception {
+        assertPublicInstanceMethod(DriveGuidance.ResolveModeChoice.class, "absolutePose",
+                DriveGuidance.AbsolutePoseTuningStage.class, AbsolutePoseEstimator.class);
+        assertPublicInstanceMethod(DriveGuidance.ResolveModeChoice.class, "relativeAprilTags",
+                DriveGuidance.RelativeAprilTagsTuningStage.class,
+                edu.ftcsushi.fw.sensing.vision.apriltag.AprilTagSensor.class,
+                edu.ftcsushi.fw.sensing.vision.CameraMountConfig.class);
+        assertPublicInstanceMethod(DriveGuidance.ResolveModeChoice.class, "observedPoints",
+                Object.class, DriveGuidanceSpec.LossPolicy.class);
+        assertEquals(3, DriveGuidance.ResolveModeChoice.class.getDeclaredMethods().length);
+        assertEquals(5, DriveGuidance.AbsolutePoseTuningStage.class.getDeclaredMethods().length);
+        assertEquals(3, DriveGuidance.RelativeAprilTagsTuningStage.class.getDeclaredMethods().length);
+        assertPublicInstanceMethod(DriveGuidance.AbsolutePoseTuningStage.class,
+                "doneAbsolutePose", Object.class);
+        assertPublicInstanceMethod(DriveGuidance.RelativeAprilTagsTuningStage.class,
+                "doneRelativeAprilTags", Object.class);
+        assertPublicFinalField(DriveGuidanceStatus.class, "solveMode", DriveGuidanceSpec.SolveMode.class);
+        assertEquals(3, DriveGuidanceSpec.SolveMode.values().length);
+        for (Class<?> type : DriveGuidance.class.getDeclaredClasses()) {
+            assertFalse(type.getSimpleName(), type.getSimpleName().contains("Adaptive"));
+            assertFalse(type.getSimpleName(), type.getSimpleName().contains("EstimatorStage"));
+            assertFalse(type.getSimpleName(), type.getSimpleName().contains("SensorStage"));
+        }
+        for (java.lang.reflect.Field field : DriveGuidanceStatus.class.getFields()) {
+            assertFalse(field.getName(), field.getName().contains("blend"));
+            assertFalse(field.getName(), field.getName().contains("Source"));
+            assertFalse(field.getName(), field.getName().equals("mode"));
+        }
     }
 
     private static void assertTuningSurface() throws Exception {

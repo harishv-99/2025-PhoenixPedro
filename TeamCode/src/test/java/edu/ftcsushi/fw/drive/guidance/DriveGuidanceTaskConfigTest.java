@@ -394,7 +394,7 @@ public final class DriveGuidanceTaskConfigTest {
                 .translateTo()
                     .fieldPointInches(targetXInches, 0.0)
                 .solveWith()
-                    .localizationOnlyWithDefaults(estimator)
+                    .absolutePose(estimator).doneAbsolutePose()
                 .build();
     }
 
@@ -411,7 +411,7 @@ public final class DriveGuidanceTaskConfigTest {
                 .andFaceTo()
                     .fieldHeadingRad(targetHeadingRad)
                 .solveWith()
-                    .localizationOnlyWithDefaults(estimator)
+                    .absolutePose(estimator).doneAbsolutePose()
                 .build();
     }
 
@@ -421,7 +421,7 @@ public final class DriveGuidanceTaskConfigTest {
                 .faceTo()
                     .fieldHeadingRad(targetHeadingRad)
                 .solveWith()
-                    .localizationOnlyWithDefaults(estimator)
+                    .absolutePose(estimator).doneAbsolutePose()
                 .build();
     }
 
@@ -432,7 +432,7 @@ public final class DriveGuidanceTaskConfigTest {
                 .andFaceTo()
                     .fieldHeadingRad(0.1)
                 .solveWith()
-                    .localizationOnlyWithDefaults(estimator)
+                    .absolutePose(estimator).doneAbsolutePose()
                 .build();
     }
 

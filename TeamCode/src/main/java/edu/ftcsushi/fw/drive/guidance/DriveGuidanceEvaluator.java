@@ -1,9 +1,9 @@
 package edu.ftcsushi.fw.drive.guidance;
 
-import java.util.Collections;
 import java.util.Objects;
 
 import edu.ftcsushi.fw.core.geometry.Pose2d;
+import edu.ftcsushi.fw.core.geometry.Pose3d;
 import edu.ftcsushi.fw.core.time.LoopClock;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.sensing.vision.apriltag.TagSelectionResult;
@@ -22,12 +22,13 @@ import edu.ftcsushi.fw.spatial.TranslationSolution;
  *
  * <p>The only remaining drive-specific solve logic here is the latched
  * {@link DriveGuidanceSpec.RobotRelativePoint} target. That target captures the translation frame's
- * field pose on enable and is therefore intentionally kept outside the generic spatial-query API.</p>
+ * field pose at the first valid solve after enable and is therefore intentionally kept outside the
+ * generic spatial-query API.</p>
  */
 final class DriveGuidanceEvaluator {
 
     private static final TagSelectionResult NO_SELECTION =
-            TagSelectionResult.none(Collections.<Integer>emptySet());
+            TagSelectionResult.none();
 
     private final DriveGuidanceSpec spec;
     private final SpatialQuery spatialQuery;
@@ -44,7 +45,7 @@ final class DriveGuidanceEvaluator {
     }
 
     /**
-     * Resets evaluator-owned runtime state captured on enable, such as robot-relative translation
+     * Resets evaluator-owned runtime state captured after enable, such as robot-relative translation
      * anchors, and clears the runtime spatial-query cache. Selected-tag policies and the other
      * spatial-spec collaborators remain owned by their suppliers.
      */
@@ -63,19 +64,12 @@ final class DriveGuidanceEvaluator {
         return fieldToTranslationFrameAnchor;
     }
 
-    /**
-     * Attempts to solve the configured targets from the shared live-AprilTag spatial lane.
-     */
-    Solution solveWithAprilTags(LoopClock clock) {
-        if (spec.resolveWith.aprilTags == null || spatialQuery == null || spec.aprilTagsLaneIndex < 0) {
-            return Solution.invalid();
+    /** Evaluates only the configured evidence authority, never a fallback or second solver. */
+    Solution solve(LoopClock clock) {
+        if (spec.resolveWith.mode == DriveGuidanceSpec.SolveMode.ABSOLUTE_POSE) {
+            return solveWithAbsolutePose(clock);
         }
-        return solutionFromLane(sampleSpatialQuery(clock), spec.aprilTagsLaneIndex);
-    }
-
-    /** Reuses the same controller bridge for direct, delayed observed robot-frame points. */
-    Solution solveWithObservations(LoopClock clock) {
-        return solutionFromLane(sampleSpatialQuery(clock), spec.observationsLaneIndex);
+        return solutionFromLane(sampleSpatialQuery(clock), 0);
     }
 
     /**
@@ -86,14 +80,14 @@ final class DriveGuidanceEvaluator {
      * {@link DriveGuidanceSpec.RobotRelativePoint}, whose latched-on-enable semantics remain local
      * to DriveGuidance.</p>
      */
-    Solution solveWithLocalization(LoopClock clock) {
-        DriveGuidanceSpec.Localization cfg = spec.resolveWith.localization;
+    Solution solveWithAbsolutePose(LoopClock clock) {
+        DriveGuidanceSpec.AbsolutePose cfg = spec.resolveWith.absolutePose;
         if (cfg == null) {
             return Solution.invalid();
         }
 
         SpatialQueryResult sample = sampleSpatialQuery(clock);
-        SpatialLaneResult lane = laneResult(sample, spec.localizationLaneIndex);
+        SpatialLaneResult lane = laneResult(sample, 0);
 
         TranslationSolve translation;
         TagSelectionResult translationSelection;
@@ -122,8 +116,7 @@ final class DriveGuidanceEvaluator {
     }
 
     /**
-     * Samples the shared spatial query for this loop, reusing the cached per-cycle sample when both
-     * localization and AprilTag solve paths inspect it.
+     * Samples the configured spatial-query runtime once for this loop.
      */
     private SpatialQueryResult sampleSpatialQuery(LoopClock clock) {
         return spatialQuery != null ? spatialQuery.get(clock) : null;
@@ -212,44 +205,58 @@ final class DriveGuidanceEvaluator {
      * pose estimate.
      */
     private TranslationSolve solveRobotRelativeTranslation(LoopClock clock,
-                                                           DriveGuidanceSpec.Localization cfg,
+                                                           DriveGuidanceSpec.AbsolutePose cfg,
                                                            SpatialQueryResult sample) {
+        long cycle = clock.cycle();
         PoseEstimate est = cfg.poseEstimator.getEstimate();
         boolean valid = est != null
                 && est.hasPose
                 && est.timestamp.isFresh(clock, cfg.maxAgeSec)
-                && est.quality >= cfg.minQuality;
+                && Double.isFinite(est.quality) && est.quality >= cfg.minQuality && est.quality <= 1.0
+                && isFinitePose(est.fieldToRobotPose);
         if (!valid) {
             return TranslationSolve.invalid();
         }
 
-        Pose2d robotToTranslationFrame = (sample != null)
-                ? sample.robotToTranslationFrame
-                : Objects.requireNonNull(
-                spec.controlFrames.translationFrame().get(clock),
-                "SpatialControlFrames.translationFrame().get(clock) returned null"
-        );
+        Pose2d robotToTranslationFrame = Objects.requireNonNull(
+                spec.controlFrames.translationFrame().getAt(clock, est.timestamp),
+                "SpatialControlFrames.translationFrame().getAt(...) returned null");
+        if (!isFinitePose(robotToTranslationFrame)) return TranslationSolve.invalid();
 
         Pose2d fieldToRobot = est.toPose2d();
-        Pose2d fieldToTranslationFrame = fieldToRobot.then(robotToTranslationFrame);
-        if (fieldToTranslationFrameAnchor == null) {
-            fieldToTranslationFrameAnchor = fieldToTranslationFrame;
-        }
+        Pose2d anchor = fieldToTranslationFrameAnchor != null
+                ? fieldToTranslationFrameAnchor : fieldToRobot.then(robotToTranslationFrame);
+        if (!isFinitePose(anchor)) return TranslationSolve.invalid();
 
         DriveGuidanceSpec.RobotRelativePoint target =
                 (DriveGuidanceSpec.RobotRelativePoint) spec.translationTarget;
-        Pose2d fieldToTargetPoint = fieldToTranslationFrameAnchor.then(
+        Pose2d fieldToTargetPoint = anchor.then(
                 new Pose2d(target.forwardInches, target.leftInches, 0.0)
         );
         Pose2d robotToTargetPoint = fieldToRobot.inverse().then(fieldToTargetPoint);
 
-        return new TranslationSolve(
-                true,
-                robotToTargetPoint.xInches - robotToTranslationFrame.xInches,
-                robotToTargetPoint.yInches - robotToTranslationFrame.yInches,
-                false,
-                Double.NaN
-        );
+        double forwardError = robotToTargetPoint.xInches - robotToTranslationFrame.xInches;
+        double leftError = robotToTargetPoint.yInches - robotToTranslationFrame.yInches;
+        if (!Double.isFinite(forwardError) || !Double.isFinite(leftError)
+                || !Double.isFinite(Math.hypot(forwardError, leftError))) {
+            return TranslationSolve.invalid();
+        }
+        if (clock.cycle() != cycle) {
+            throw new IllegalStateException("Drive guidance callbacks must not advance or reset LoopClock");
+        }
+        fieldToTranslationFrameAnchor = anchor;
+        return new TranslationSolve(true, forwardError, leftError, false, Double.NaN);
+    }
+
+    private static boolean isFinitePose(Pose2d pose) {
+        return pose != null && Double.isFinite(pose.xInches)
+                && Double.isFinite(pose.yInches) && Double.isFinite(pose.headingRad);
+    }
+
+    private static boolean isFinitePose(Pose3d pose) {
+        return pose != null && Double.isFinite(pose.xInches) && Double.isFinite(pose.yInches)
+                && Double.isFinite(pose.zInches) && Double.isFinite(pose.yawRad)
+                && Double.isFinite(pose.pitchRad) && Double.isFinite(pose.rollRad);
     }
 
     static final class Solution {

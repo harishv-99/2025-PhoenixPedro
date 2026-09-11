@@ -622,8 +622,8 @@ public final class PinpointPodOffsetCalibratorTimingTest {
             setField(owner, "visionLane", camera.owned);
             setField(owner, "tagSensor", camera.sensor);
             setField(owner, "tagEstimator", new AprilTagPoseEstimator(camera.sensor,
-                    config.fixedTagLayout,
-                    config.aprilTags.toAprilTagPoseEstimatorConfig(camera.cameraMountConfig())));
+                    config.fixedTagLayout, camera.cameraMountConfig(),
+                    config.aprilTags.toAprilTagPoseEstimatorConfig()));
         }
 
         void queueAuto() throws Exception { setField(owner, "autoStartRequested", true); }

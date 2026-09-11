@@ -10,7 +10,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertNotSame;
-import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
@@ -48,7 +47,7 @@ public final class AprilTagPoseEstimatorConfigApiTest {
     }
 
     @Test
-    public void copyDeepCopiesNonNullSolverDraftAndRetainsStableMount() {
+    public void copyDeepCopiesNonNullSolverDraft() {
         AprilTagPoseEstimator.Config source = AprilTagPoseEstimator.Config.defaults();
         source.fieldPoseSolver.rangeSoftnessInches = 17.0;
 
@@ -57,7 +56,6 @@ public final class AprilTagPoseEstimatorConfigApiTest {
         assertNotSame(source, copy);
         assertNotSame(source.fieldPoseSolver, copy.fieldPoseSolver);
         assertEquals(17.0, copy.fieldPoseSolver.rangeSoftnessInches, 0.0);
-        assertSame(source.cameraMount, copy.cameraMount);
 
         source.fieldPoseSolver.rangeSoftnessInches = 91.0;
         assertEquals(17.0, copy.fieldPoseSolver.rangeSoftnessInches, 0.0);
