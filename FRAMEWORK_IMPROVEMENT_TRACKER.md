@@ -1,6 +1,6 @@
 # Framework Improvement Tracker
 
-Last updated: 2026-09-11
+Last updated: 2026-09-14
 
 This file tracks proposed Sushi framework improvements. It is deliberately a planning document:
 an item being listed here does **not** mean its current proposed solution has been approved. Each
@@ -109,6 +109,10 @@ Only then may the item's status move to **Ready**. Implement one Ready item at a
 adjacent cleanup unless it is required to keep the repository compiling and documented.
 
 ## Recommended implementation order
+
+The numbered rows below are a stable inventory, not the current execution sequence. The
+[BIOBUZZ season priority program](#biobuzz-season-priority-program-2026-09-14) is authoritative for
+pending work; older execution-order sections preserve historical decisions only.
 
 | Order | ID | Item | Status | Current leading hypothesis (not yet a decision) |
 |---:|---|---|---|---|
@@ -292,8 +296,382 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 178 | VISION-08 | Classified floor-object evidence and multi-color webcam | Proposed | Preserve color/class evidence through one coherent webcam frame, projection, selection, and bounded memory; retain unwanted/unknown candidates without treating class as identity. |
 | 179 | VISION-09 | Verified classified Limelight observations | Proposed | Verify one actual backend/schema before adapting class evidence; preserve pipeline and capture truth. Independently gated, not a blocker for the webcam path or a reactivation of VISION-05. |
 | 180 | SPATIAL-05 | Conservative unwanted-object contact geometry | Proposed | Separate the narrow desired-pickup window from a conservative possible-contact envelope; reuse geometry where truthful and check all modeled legs without claiming ingestion or collision safety. |
+| 181 | FTC-03 | Competition/practice tooling separation | Proposed | Audit automatic services and dependencies; preserve required SDK behavior while excluding unsupported competition tooling and retaining explicit practice support. |
+| 182 | VISION-10 | BIOBUZZ vision metadata and landmark policy | Proposed | Verify season tag metadata and backend support; keep moving cell tags observable without treating them as unconditional fixed localization landmarks. |
+| 183 | SPATIAL-06 | Full-3D tag-relative target geometry | Proposed | Apply physical tag-to-target transforms before planar projection; preserve capture evidence and existing planar semantics. |
+| 184 | EXAMPLE-14 | Changing-target, feedback-confirmed shooting | Proposed | Demonstrate one logical target with coherent aiming/settings, readiness, bounded confirmed feeding, target-loss interruption, and explicit recovery. |
+| 185 | EXAMPLE-15 | Class-aware bounded single pickup | Proposed | Use classified evidence and complete checked-motion/contact geometry for one feedback-confirmed pickup, without an example-local planner. |
+| 186 | EXAMPLE-16 | Phase-gated scoring and reserved parking | Proposed | Compose one eligible scoring action and bounded parking through existing Tasks and checked motion; distinguish local timing from field authority. |
+| 187 | AUDIT-03 | BIOBUZZ capability and simplicity closure | Proposed | Close a separate season matrix with rule provenance, complete robot-code burden, software evidence, physical limits, and explicit unsupported dispositions. |
+| 188 | VISION-11 | Capture-coherent rigid multi-tag target pose | Proposed | Compare single-tag, consistency-checked, and joint-corner estimates of one rigid target using one exposure; preserve evidence and gate physical-benefit claims. |
+
+### BIOBUZZ season priority program (2026-09-14)
+
+- **Authority / scope:** the user confirmed **Tracker only**, then approved the complete
+  BIOBUZZ-first plan with **"Implement the plan."** This intake changes only this tracker on
+  `codex/biobuzz-opportunity-priorities`, from fetched `origin/master` `353bbfb` (PR #172).
+  It adds eight **Proposed** tasks and amends pending priorities/acceptance; it approves no new
+  public API, diagnostic prototype, production behavior, hardware run, or publication. The
+  multi-item scope is this expressly approved tracker intake, not permission to implement several
+  framework items together. Each eventual item retains its separate decision and review gates.
+- **Current authority:** this section supersedes all older pending execution orders, including
+  the bounded vision, multi-color, Cuttlefish/Worlds, robustness, and Cuberobot/DECODE orders.
+  Historical approvals, completed work, frozen comparison matrices, and evidence-backed
+  deferrals remain unchanged. Numbered inventory IDs never override actual dependencies.
+- **Source baseline:** [official season materials](https://ftc-resources.firstinspires.org/ftc/archive/2027/game)
+  identify BIOBUZZ Competition Manual **V1** and [Team Update **TU00**](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/tu-00),
+  both released **2026-09-12**, checked **2026-09-14**. Recheck the current manual, updates, and
+  official Q&A at each season item's decision gate; record the revision and any changed scope.
+  TU00 schedules Q&A opening for September 28, so unresolved interpretations are not settled by
+  an invented answer. Rule references below describe this baseline, not permanent framework law.
+
+| Evidence | Opportunity / limit |
+|---|---|
+| [Arena sections 9.6 and 9.9](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-09): each cell has four AprilTags on its bottom; the hive tips between stable positions. | Observe the moving target directly, with known rigid tag-to-opening geometry; do not assume its tags occupy unconditional fixed field poses. Multiple tags on one sticker are not differently facing surfaces. |
+| [Arena section 9.8](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-09#page=12): yellow pollen is approximately 2.8 inches; alliance-colored nectar approximately 3.6 inches; shapes/sizes vary. | Class-dependent physical models and uncertainty allowances are needed. A modeled resting-object height is not a measured height or an airborne-object detector. |
+| [G407-G409](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-11#page=10), [G410](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-11#page=11), and [G417-G418](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-11#page=13): controlled-element limits, opponent nectar, dumped elements, flower timing, and permitted cell/flower interactions constrain actions. | Capacity, class admission, pickup eligibility, and phase policy stay robot-owned. Recheck exact wording before demonstrating an action; uncertain eligibility cannot become permission. |
+| [Game details sections 10.5.1-10.5.5](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-10): scoring distinguishes tips, retained elements, flowers, and parking. | Target alignment, feed departure, capture, and official scoring are different facts. Local timing does not replace field timing. |
+| [R702](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-12#page=22), [R704](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-12#page=23), and [R708](https://ftc-resources.firstinspires.org/ftc/archive/2027/game/manual-12#page=25): permitted computing/camera hardware and communication restrictions. | Audit the exact deployed SDK/dependencies/services. R702 permits Limelight 3A, not 3G; R704.D concerns Wi-Fi services/streaming, not a blanket ban on local logs or off-field tuning. Do not presume custom web endpoints are exempt. |
+
+**Baseline-first execution order**
+
+| Stage | Priority sequence |
+|---|---|
+| Competition compatibility and reliable shooting | FTC-03 -> VISION-10 -> SPATIAL-06 -> DOC-22 -> VISION-11 -> DIAG-04 -> EXAMPLE-14 |
+| Class-aware driver-assisted baseline | VISION-08 -> SPATIAL-04 -> PEDRO-03 -> SPATIAL-05 -> DIAG-03 -> EXAMPLE-15 -> EXAMPLE-16 |
+| Localization robustness and advanced collection | SENSOR-02 -> LOCALIZATION-05 -> VISION-07 -> AUTO-02 -> AUTO-03 -> EXAMPLE-13 -> AUDIT-03 |
+| Remaining eligible work | VISION-09 if evidence-eligible, then CTRL-03 -> AUDIT-02 -> TASK-08 -> DIAG-02 -> DIAG-05 -> DIAG-06 -> DIAG-07 |
+
+This is priority, not a dependency between every adjacent pair. **FTC-03 is the next decision
+gate after this intake's review/publication**, not work started by the intake. Select the
+highest-priority eligible item when another is evidence-blocked; record the blocked question and
+continue only where the next item's own prerequisites and completion contract are satisfied.
+
+- VISION-10 audits the season stack after FTC-03's compatibility baseline; dependency changes
+  require revalidation of that baseline rather than a stale approval. SPATIAL-06's math builds
+  on existing Pose3d/spatial seams; season integration follows VISION-10, not a new localization
+  requirement. VISION-11 integrates after VISION-10/SPATIAL-06.
+- DOC-22 is promoted because its incorrect sequence-success explanation would undermine the
+  coordination examples. EXAMPLE-14 requires VISION-10, SPATIAL-06, and DOC-22. It may use an
+  explicitly classified single-tag result if VISION-11 is evidence-blocked; neither joint
+  estimation nor DIAG-04 report availability is a prerequisite for the baseline.
+- DIAG-04 is promoted for truthful single-/multi-tag measurement reports. Reuse DIAG-01's
+  practice download infrastructure and available producer evidence; no second recorder and no
+  report pretending that a moving-target pose is a field-localization estimate. Its existing
+  localization report need not wait for a joint solver. Coordinate new result fields only when
+  the producer contract exists.
+- EXAMPLE-15 requires VISION-08, SPATIAL-04, PEDRO-03, and SPATIAL-05 plus completed pickup
+  foundations. Checking a desired color alone cannot establish an acceptable approach. DIAG-03
+  supports onboard color-sensor measurements, not webcam calibration/classification, and is not
+  a prerequisite for VISION-08 or the pickup example.
+- EXAMPLE-16 requires DOC-22 and SPATIAL-04/PEDRO-03 checked motion, not advanced collection.
+  SENSOR-02 precedes LOCALIZATION-05; their promotion does not make wall correction a required
+  dependency for existing odometry-based survey or an excuse to constrain unobservable axes.
+- VISION-09 remains an optional backend with its own real device/schema/model gates. It cannot
+  delay webcam support. CTRL-03 is not required for baseline shooting. AUDIT-02 retains its
+  original fifteen rows and terminal-disposition prerequisites, separate from AUDIT-03.
+- Preserve **FIELD-01, DRIVE-02, PERF-03, CHECK-01, SOURCE-03, VISION-05, and DRIVE-04** as
+  **Deferred**, with their recorded reactivation evidence. Articulated-camera and other excluded
+  hardware-dependent capabilities are not silently reactivated. Every current pending inventory
+  item is either ordered above or explicitly retained in this deferral list.
+
+**Common implementation and teaching constraints**
+
+Keep season rules, alliance selection, cell/tag-group meaning, scoring priorities, mechanism
+policy, and physical geometry in robot-owned configuration or independent examples. Reusable
+geometry/evidence stays in Sushi; FTC/vendor types stay at their explicit boundaries. All robot
+code under `edu.ftcsushi.robots` counts in simplicity comparisons, not just the OpMode.
+Reuse completed calibration tables, feedback/feeding helpers, source-driven Plants, and Task
+composition rather than create duplicate tasks or a season engine. Maintain one camera owner,
+LoopClock, and final writer. Direct target-relative guidance must not secretly acquire a field
+pose or replace the localization owner's accepted estimate.
+
+Each new item below requires its own caller/construction-path audit, no-change/local-fix/API
+comparison, and approval before selecting new public contracts. Synchronize implementation,
+Javadocs, optional concept-first guides, and independent compiling examples at that later gate.
+Teach position/orientation, frames, capture time, readiness, class versus identity, and any new
+syntax before use. Keep the beginner navigation compact; use a small labeled spatial/timing
+diagram and text equivalent only where it clarifies the lesson. Production applications are not
+shared teaching dependencies. Software evidence never proves physical accuracy, safe motion,
+correct classification, successful capture, or scoring.
+
+**Not selected for this intake**
+
+- Predictive interception and temporal object-identity tracking: no demonstrated baseline need
+  justifies association/motion-model complexity or the existing measurement gates.
+- A universal season/rules/strategy engine: physical evidence and alliance/phase decisions remain
+  explicit robot policy; existing Tasks already provide bounded coordination.
+- Moving-hive-derived localization: a target pose is not a fixed field landmark. Inferring robot
+  pose from a pivot model needs a separate concrete observability, geometry, and independent
+  measurement case; do not fabricate absent degrees of freedom or repurpose fixed-tag fusion.
+- New interpolation, feeding, cleanup, inventory-classification, or match-clock frameworks:
+  reuse supported capabilities, add focused consumers, and leave sensor-dependent classification
+  and mechanism facts explicit rather than duplicate existing owners.
+
+**Tracker intake verification / review**
+
+The tracker-only intake is **Done** (manual review and destination-specific publication authorized
+on 2026-09-14); all eight new implementation tasks remain **Proposed**. Verification on 2026-09-14:
+
+- `DocumentationLinksTest`: **61 tests**, zero failures/errors/skips.
+- `ResultDownloadDocumentationTest`: **3 tests**, zero failures/errors/skips.
+- The focused Gradle run also completed `:TeamCode:compileDebugJavaWithJavac`; existing Java 8
+  source/target deprecation warnings remain, with no new code or runtime behavior changed.
+- Static checks found **188 unique consecutive inventory rows** (152 Done, 29 Proposed,
+  7 Deferred), one detail heading per new ID, valid added task references, and **36 pending
+  items** explicitly ordered or deferred. All original 180 inventory statuses are unchanged.
+  The reviewed explicit prerequisite/closure graph is acyclic. `git diff --check` and the
+  tracker-wide trailing-whitespace/control-character checks pass.
+- Independent scope/order and official-rule reviews found and resolved single-pickup
+  accepted-class/controlled-count evidence, localization-versus-target report wording, exact
+  rule links, and physical-versus-commanded transition behavior. No substantive finding remains.
+  AUDIT-02's frozen benchmark section is unchanged after newline normalization.
+- Only `FRAMEWORK_IMPROVEMENT_TRACKER.md` changed. No implementation task started, normative
+  guide changed, hardware enabled, or physical outcome verified. Focused checks passed again
+  after the implementation review record; rerun them after this publication-status update.
+  Each eventual physical claim retains its own evidence gate.
+
+Review/publication coordinates are
+`codex/biobuzz-opportunity-priorities` -> `https://github.com/harishv-99/2025-PhoenixPedro.git` ->
+`master`. The user approved the reviewed tracker diff and explicitly authorized committing this
+branch, pushing to that exact repository, opening a pull request, and merging into `master`.
+Git and the pull request record the publication result. No next implementation task starts as
+part of this authorization; FTC-03 remains the next separate decision gate.
+
+### FTC-03 - Competition/practice tooling separation
+
+- **Status:** **Proposed**. No pending implementation prerequisite; inspect completed SDK/tool
+  boundaries, DIAG-01, Panels, and their transitive dependencies. Leads the BIOBUZZ priority queue.
+- **Confirmed evidence / rule gate:** `FtcResultDownloads` registers routes through
+  `@WebHandlerRegistrar`; registration is not limited to entering a tester. Inspect actual
+  automatic registration, startup, network services, camera streams, discovery and packaging,
+  not just enabled OpModes. Apply the pinned R702/R704/R708 baseline and current official updates;
+  neither the presence of an SDK server nor a disabled UI proves a third-party service permitted.
+- **Alternatives / bounded scope:** compare supported SDK/dependency configuration, minimal
+  build-time packaging separation, and the smallest explicit practice/competition arrangement.
+  Select one ordinary competition configuration that preserves required SDK/Driver Station
+  services and excludes unsupported tooling; retain deliberate practice access. No rules engine,
+  independent server, hidden runtime toggle precedence, or blanket removal of SDK logging.
+- **Acceptance:** inspect resolved dependencies and packaged/startup registrations; check cold
+  launch, OpMode discovery, INIT/START/STOP, disabled-tester cases, and absence of excluded custom
+  endpoints/streams. Verify practice reports still work without competing controls. Document the
+  exact build/deploy distinction and preserve current robot configuration semantics.
+- **Completion / evidence:** source/package tests prove separation, not official approval or
+  device behavior. Unresolved rule interpretation or unavoidable firmware/service behavior gets
+  an explicit official-evidence/device gate, not an assumed exemption. Keep screenshots/physical
+  network checks and final inspection responsibility separate from software assertions.
+
+### VISION-10 - BIOBUZZ vision metadata and landmark policy
+
+- **Status:** **Proposed**. Season stack review follows FTC-03; reuse VISION-01/02/03,
+  CONFIG-03, LOCALIZATION-02/03/04, and existing calibration contracts.
+- **Confirmed evidence:** `FtcGameTagLayout` has a named DECODE policy, not verified BIOBUZZ
+  support. `TagLayout` already distinguishes fixed landmarks from merely observable tags.
+  Arena section 9.9 supplies 3.25-inch 36h11 targets and cell clusters; verify exact IDs, sizes,
+  orientations, and backend-provided metadata against the official season geometry and SDK.
+- **Decision / scope:** compare an explicit supported season configuration with the smallest
+  metadata/policy extension. Keep moving cell tags detectable/identifiable and available to
+  direct guidance while excluding them from unconditional fixed-landmark correction. Do not
+  populate guessed fixed poses just to satisfy an estimator or calibration tester. Audit the
+  no-fixed-landmark case across localization, guidance, and calibration owners/callers.
+- **Backend boundary:** verify actual supported hardware/firmware/SDK libraries and capabilities;
+  detection support, pose support, fixed-field metadata, and concurrent processing are distinct.
+  Revalidate FTC-03 if dependencies change. Unsupported devices or absent metadata remain
+  unavailable with actionable instructions; VISION-09's classified Limelight gate is separate.
+- **Acceptance / teaching:** validate sizes/IDs and immutable metadata; all moving/no fixed tags,
+  unknown IDs, absent poses, stale/reset frames, direct guidance without localization, and
+  refusal to feed moving markers into fixed-landmark correction. Explain detection versus
+  localization before configuration, with independent examples and no guessed camera calibration.
+  Physical detection/pose accuracy and mount review remain adopting-robot validation.
+
+### SPATIAL-06 - Full-3D tag-relative target geometry
+
+- **Status:** **Proposed**. Builds on SPATIAL-01/02 and DRIVE-05/VISION-06; season integration
+  follows VISION-10. Neither a multi-tag solver nor field localization is a math prerequisite.
+- **Confirmed evidence:** `SpatialQuerySupport.composeRobotThingFromObservation(...)` converts
+  robot-to-tag Pose3d to Pose2d before applying the current planar tag-relative offset. That is
+  the existing planar contract, not proof of full physical tag-to-opening geometry for a tilted
+  cell. `References` already supports per-ID planar definitions; do not duplicate that capability.
+- **Decision / bounded scope:** compare a documented single-tag adapter with the smallest
+  explicit full-3D transform/reference extension. Apply physical tag-to-target translation and
+  orientation before projecting required planar drive channels; retain height/full orientation
+  for supported mechanism consumers. Preserve existing planar meanings or explicitly migrate
+  callers if a reviewed coherent replacement wins. No universal scene graph or new camera owner.
+- **Evidence / identity:** different tag definitions may identify one physical destination.
+  Known camera mounting plus an observed tag plus its rigid target offset must suffice without
+  global localization. Preserve capture-time mount lookup and original timestamps. Absolute-pose
+  interpretation requires genuine fixed geometry; moving cells do not gain a hidden field solve.
+- **Acceptance:** independently derived pitched/rolled/yawed tags, nonzero height offsets,
+  rotated/offset cameras and tools, equivalent destinations from distinct IDs, planar regression
+  cases, missing observations/history, invalid transforms, stale/reset epochs, and finite outputs.
+  Cross-check direct/field answers only where both have supported evidence. Separate opening
+  geometry from a calibrated projectile trajectory and tag centering from opening alignment.
+- **Teaching / physical gate:** a focused diagram explains camera -> tag -> opening and the
+  difference between 3D calculation and planar drive output, with units/frames and text equivalent.
+  Verify API/Javadocs/current consumers together; actual sticker placement, mount accuracy,
+  opening geometry and shooter response require independent adoption checks.
+
+### EXAMPLE-14 - Changing-target, feedback-confirmed shooting
+
+- **Status:** **Proposed**. Requires VISION-10, SPATIAL-06, DOC-22 and completed EXAMPLE-11,
+  task/cleanup and calibration-table capabilities. VISION-11/DIAG-04 are optional enhancements,
+  not a gate blocking an explicitly supported single-tag baseline.
+- **Evidence / alternatives:** EXAMPLE-11 already supplies feedback-confirmed feeding and
+  explicit recovery; the spatial/selection path supplies direct target geometry. Compare a
+  focused independent extension with clearer documentation of existing composition. Do not add
+  another queue, shot lifecycle, cluster estimator, or public API merely to shorten an example.
+- **Bounded consumer:** select one logical cell using robot-owned group/eligibility policy; use
+  one coherent supported target result for aim, shooter-to-opening range/height, piece-dependent
+  calibration settings, and readiness. Changing visible member tags alone is not retargeting.
+  Reevaluate readiness using current evidence; actual destination/configuration changes,
+  unusable/stale observations, target motion outside reviewed eligibility, or mechanism loss of
+  readiness cannot reuse a previously ready shot. Do not restart settling merely because an
+  ordinary fresh measurement arrives, nor assume a held target ID proves a solution.
+- **Action / recovery:** bound feed attempts, interrupt safely on lost required evidence, and
+  require explicit recovery after uncertain feeding. Demonstrate clear driver state and reuse
+  existing feedback cues where helpful. Separate pollen/nectar calibration profiles without
+  invented physical thresholds. Robot policy owns upward-cell eligibility and interpretation of
+  hive state; apparent pose stability is not proof of official damper contact or a scored tip.
+- **Acceptance / teaching:** eligibility switching between the two cells, member-tag visibility
+  changes, actual retarget,
+  lost/reacquired target, missing localization with valid direct geometry, stale/conflicting
+  data, changed piece/profile, unavailable mechanism readiness, confirmed/uncertain departure,
+  deadline, cancellation and STOP. Teach one optional outcome with complete independent wiring.
+  Departure is not scoring; hardware remains disabled until camera, shooter, feed, trajectory,
+  clearance and stop behavior have been reviewed on the adopting robot.
+
+### EXAMPLE-15 - Class-aware bounded single pickup
+
+- **Status:** **Proposed**. Requires VISION-08, SPATIAL-04, PEDRO-03, SPATIAL-05 and completed
+  VISION-03/04/06, DRIVE-06, SPATIAL-03. DIAG-03 and VISION-09 are not mandatory prerequisites.
+- **Evidence / alternatives:** the independent pickup example already demonstrates bounded
+  approach/capture; classified evidence and complete contact/travel checks are the missing
+  prerequisites. Compare a focused extension with using existing factories directly, keeping
+  robot code as a consumer rather than introducing a second collection planner.
+- **Scope:** choose one accepted resting-floor object from eligible evidence, check every
+  modeled approach/turn/final leg against allowed travel and unwanted-object contact, execute
+  the exact checked localized motion, and require independent capture confirmation. The robot
+  owns G407 controlled-count admission (internal plus intentional external control, unknown not
+  assumed zero), G408 alliance/class restrictions, and G409 pickup eligibility. Preserve physical
+  capture/occupied capacity separately from accepted-class goal progress: wrong or unclassified
+  capture cannot report accepted-class success. Missing class confirmation leaves that goal
+  unproven with an explicit non-success result, not a guessed class from the pursued target;
+  retain exact deadline/cancellation/failure outcomes. Camera-only geometry cannot certify field
+  territory clearance; no survey, multi-object optimizer, hidden detour, or local retry loop.
+- **Acceptance:** accepted target behind an unwanted object, mixed sizes, unknown class,
+  stale/partial evidence, constrained walls/corners, invalid localization, capacity change,
+  externally controlled objects, unsupported spill history, wrong/unknown-class capture,
+  route replacement/failure, missing capture, cancellation and STOP. Forbidden pickup cannot
+  become acceptable by pricing an ejection delay. Occupancy proves neither class nor scoring.
+- **Teaching / adoption:** one independent optional outcome explains class versus identity,
+  desired-center window versus possible contact, and checked geometry versus physical safety.
+  Reuse existing managed lifecycle and disabled-until-reviewed motion configuration. Actual
+  color accuracy, contact envelope, intake confirmation, capacity and clearances need hardware.
+
+### EXAMPLE-16 - Phase-gated scoring and reserved parking
+
+- **Status:** **Proposed**. Requires DOC-22, SPATIAL-04/PEDRO-03 and completed AUTO-01/TASK-05/07
+  composition. It does not depend on advanced collection or a new match timer.
+- **Evidence / alternatives:** existing success-gated versus completion-continuation sequences,
+  timeouts and fresh Tasks already express one bounded attempt and reserved continuation.
+  Compare an independent concise example with improved existing guidance; introduce no scheduler,
+  generic season clock, rules engine, or new mechanism abstraction.
+- **Scope:** robot policy supplies reviewed phase eligibility, an existing mechanism's scoring
+  action, explicit attempt deadline and parking reservation. Show one scoring action followed
+  by checked parking on the allowed outcomes. Late starts/local elapsed time do not establish
+  authoritative field phase; absent eligibility inhibits scoring. Recheck G410 and section
+  10.5.2 wording before choosing the demonstrated flower action; do not generalize nectar timing
+  into permission for other interactions. Keep G403/G404 transition/end behavior explicit.
+- **Acceptance:** already eligible and too early starts, late START with unknown field timing,
+  missing eligibility, scoring success/non-success/timeout, rejected parking geometry, lost pose,
+  cancellation and STOP. Required cleanup stays with its owner; lifecycle exceptions/direct
+  cancellation never launch a parking continuation. No powered movement during transition;
+  STOP cancels work and issues the required stop outputs without claiming physical rollback.
+- **Teaching / adoption:** explain local elapsed time, eligibility, hard cutoff, continuation
+  and final result beside the active code, optionally with one labeled timeline. Use independent
+  disabled hardware configuration; software success proves neither official timing nor physical
+  parking/scoring. Reuse existing mechanism/calibration patterns rather than guess match settings.
+
+### AUDIT-03 - BIOBUZZ capability and simplicity closure
+
+- **Status:** **Proposed**. A separate season audit, not an expansion of AUDIT-01 or AUDIT-02.
+- **Start condition:** season baseline and advanced items in stages 1-3 above, excluding this
+  audit itself, have terminal dispositions: **Done** (including reviewed no-change) or
+  evidence-backed **Deferred** with exact reactivation conditions. Optional VISION-09 and
+  physically unverified benefit claims receive explicit classifications, not blocking promises.
+- **Evidence / scope:** pin current Sushi, official manual/update/Q&A revisions, and complete
+  independent consumers at audit start. Matrix rows cover competition/practice deployment,
+  season metadata/landmarks, 3D opening geometry, rigid multi-tag target pose, coherent shooting,
+  classified single pickup, phase/parking, directional-range constraints, useful-view survey,
+  and capacity-aware collection. Link rules and source/tests; do not attribute engineering
+  inferences to FIRST or claim legal behavior from software tests alone.
+- **Simplicity / alternatives:** classify already supported, implemented, robot-owned,
+  deliberately not selected, and evidence-gated capabilities. Compare complete affected
+  `edu.ftcsushi.robots` code, configuration, helpers, lifecycle, presenters and concepts. No-change
+  is valid when another abstraction would not simplify safe ordinary usage. Preserve simple
+  single-tag/single-color consumers and AUDIT-02's frozen fifteen comparison rows.
+- **Acceptance / completion:** every row has exact support or a reason/trigger, software versus
+  physical evidence, documented limitations, and an independent present-state learning path.
+  Confirm no hidden localization fallback, renewed stale target age, generic season policy in
+  core, parallel owners, or unproven accuracy/capture/clearance claim. Do not reopen completed
+  items merely to manufacture new work; separately propose any newly demonstrated gap.
+
+### VISION-11 - Capture-coherent rigid multi-tag target pose
+
+- **Status:** **Proposed**. Integrates after VISION-10/SPATIAL-06; borrows existing camera and
+  capture ownership. Not a new field-localization, temporal tracking, or multi-camera feature.
+- **Confirmed evidence:** `AprilTagDetections` carries a coherent frame timestamp, but
+  `AprilTagObservation` exposes tag poses, not image corners or capture-matched camera
+  calibration. Direct spatial guidance selects one tag. A joint corner solver therefore needs
+  a verified backend evidence extension; merely receiving four poses does not supply its inputs.
+  One calibrated known-size tag already estimates position and orientation; four are not a
+  prerequisite. [FTC pose documentation](https://ftc-docs.firstinspires.org/en/latest/apriltag/vision_portal/apriltag_pose/apriltag-pose.html).
+- **Alternatives / decision:** compare existing single-tag target transforms, consistency checks
+  after transforming each tag estimate into the same target frame, and joint fitting of all
+  accepted same-exposure image corners to the known rigid geometry. Do not average raw centers
+  from different tags or assume Euler-angle averaging is a general pose solution. Multi-marker
+  geometry is established in [OpenCV's board-pose documentation](https://docs.opencv.org/4.13.0/db/da9/tutorial_aruco_board_detection.html);
+  it is not evidence that Sushi or every FTC backend already provides it. Choose the smallest
+  supported contract; do not select a solver or thresholds merely by adding this task.
+- **Bounded target contract:** configure finite unique tag-to-target transforms and verified
+  sizes for one rigid object. Preserve one full-3D result, original capture timestamp, contributing
+  IDs, calculation method and available validity/ambiguity evidence. Geometry describes one
+  target; the robot defines its cell identity/eligibility. Changing contributing tags alone
+  leaves that logical target unchanged. Existing reference/query/guidance consumers use the
+  result without rebuilding a cluster estimator or another sensor owner in robot code.
+- **Backend and timing:** only one actual exposure may contribute. Preserve corner ordering,
+  distortion/intrinsics and their configuration identity where the selected method needs them;
+  no current-calibration substitution for incompatible old images. Do not fuse sequential
+  pipelines, unrelated cells, independently moving hives, or unverified Limelight output.
+  Unsupported corner/pose evidence remains unavailable; a clearly identified single-tag
+  baseline may remain usable without promising backend parity or silently switching evidence.
+- **Software acceptance:** independently derived one/two/four-tag and tilted/offset geometry,
+  partially visible members, duplicate IDs, inconsistent layouts/observations, malformed corner
+  order/count, insufficient or ambiguous geometry, nonfinite/extreme math, missing calibration,
+  stale/repeated/out-of-order frames, clock/config reset, bounded detection count and solver
+  work, failures, and coherent same-cycle consumption. Verify no changes to the fixed-landmark
+  correction path and no extra camera polling/clock/telemetry owner.
+- **Physical benefit gate:** compare the selected method to the single-tag baseline against an
+  independent reference across representative ranges, oblique/grazing angles, partial occlusion,
+  calibration/mount conditions and target motion; record error and latency, not only image-fit
+  residual. Same-plane tags share calibration/mount biases and may remain pose-ambiguous at
+  small/distant image scales; see [IPPE's ambiguity explanation](https://github.com/tobycollins/IPPE#resolving-the-flip-ambiguity).
+  Tag count, agreement or low fitting residual is not a calibrated confidence or accuracy claim.
+  If algorithm selection depends on unavailable evidence, retain the normal evidence gate.
+  A separately approved testable software contract can leave benefit as adoption evidence,
+  explicitly unverified; do not silently waive the gate or block EXAMPLE-14's supported baseline.
+- **Reports / teaching / exclusions:** reuse DIAG-01 and coordinate DIAG-04 for bounded practice
+  reports from already-published facts; do not build another recorder or raw image history.
+  Teach one logical target versus contributing tags, pose versus bearing, and visibility versus
+  accuracy before code, with a labeled cluster/opening diagram and text equivalent. No predictive
+  tracking, coasting stale poses, multi-camera fusion, automatic field localization from moving
+  cells, universal scene graph, or guarantee that an aligned projectile reaches the opening.
 
 ### Approved bounded vision collection program (2026-09-11)
+
+**Historical execution order:** superseded for pending work by the BIOBUZZ season priority
+program above. The following approvals and bounded behavior contracts remain historical authority;
+the inventory and individual records retain current completion states.
 
 The user approved the detailed plan with **"Implement the plan."** This supersedes the pending
 vision portion of the older Cuttlefish/Worlds order, not its completed work or unrelated deferrals.
@@ -748,6 +1126,11 @@ identifiers, not permission to skip dependencies. Each item retains its own deci
 
 ### VISION-07 - Capture-coherent useful-view coverage
 
+- **BIOBUZZ amendment (2026-09-14):** requested class/model context must include the effective
+  resting-object height/physical assumptions used to interpret each processed class. A covered
+  region, settled robot, elapsed delay or empty image proves neither that freshly dumped objects
+  satisfy G409 nor that the region is legal/clear for pickup. Preserve partial/unsupported model
+  evidence; these new season criteria do not add airborne tracking or a rules engine.
 - **Status:** Proposed; reuse VISION-03/SPATIAL-02 camera/projection boundaries and VISION-08's
   classified-frame processing context for requested multi-color coverage.
 - Attach optional immutable view context to the existing published object frame: source/config
@@ -768,6 +1151,11 @@ identifiers, not permission to skip dependencies. Each item retains its own deci
 
 ### AUTO-02 - Bounded automatic stop-and-look survey
 
+- **BIOBUZZ amendment (2026-09-14):** survey reports retain actual requested/processed class and
+  physical-model context. Neither completed coverage nor waiting a chosen interval establishes
+  object contact history, pickup eligibility, or absence. Continue only through explicit
+  robot-owned admission; SENSOR-02/LOCALIZATION-05 remain optional to an otherwise supported
+  odometry-based survey, not implied mandatory localization sources.
 - **Status:** Proposed; depends on SPATIAL-04, VISION-07, and a verified motion edge (PEDRO-03 for
   the ordinary Pedro example).
 - RegionSurvey generates an 8x8 requested-region grid and current plus 3x3 bounded candidate
@@ -786,6 +1174,18 @@ identifiers, not permission to skip dependencies. Each item retains its own deci
 
 ### AUTO-03 - Capacity-aware bounded region collection
 
+- **BIOBUZZ amendment (2026-09-14):** supply robot-owned G407/G408/G409 admission. The maximum
+  of four applies to controlled elements, including intentional external herding, not only
+  occupied internal slots. Unknown external control cannot be assumed zero. Account separately
+  for physical capacity, permitted controlled count and accepted-class capture progress.
+  Opponent nectar is forbidden control; a priced ejection delay cannot legalize its pursuit.
+  For dumped elements, G409's operative condition is contact with something besides that robot;
+  its explanatory intent names the tile floor. A modeled floor position, empty frame, elapsed
+  time or survey completion does not establish that contact. Keep unsupported eligibility
+  unavailable and constrain this season's example to a reviewed eligible pickup scenario.
+  Add mixed-size/class, externally herded-plus-internal, one-slot, wrong/unknown-only capture,
+  and unsupported spilled-object eligibility cases; retain all existing bounded work/lifecycle
+  contracts. The generic optional handling-cost policy below remains usable only where permitted.
 - **Status:** Proposed; depends on VISION-04, VISION-08, DRIVE-06, SPATIAL-03/04/05, AUTO-02
   and motion edge. VISION-09 is required only for adopting its classified Limelight path.
 - Keep fresh inventory occupancy/capacity distinct from timestamped monotonic confirmed-capture
@@ -869,6 +1269,10 @@ disabled pending adopting-robot camera/footprint/intake/localization/power/clear
 
 ### Multi-color collection tracker intake (2026-09-14)
 
+**Historical priority note:** this published intake's execution order is superseded by the
+BIOBUZZ season priority program. Its reviewed contracts and publication evidence remain intact;
+season-specific admission amendments below do not retroactively change that approval.
+
 - **Request / authority:** after reviewing SPATIAL-03, the user requested tracker items for red,
   blue, and shared yellow balls, including avoiding unwanted pickup because ejection costs time.
   This is a tracker-only addition: new items are **Proposed**, not implemented or API-approved.
@@ -914,6 +1318,13 @@ disabled pending adopting-robot camera/footprint/intake/localization/power/clear
 
 ### VISION-08 - Classified floor-object evidence and multi-color webcam
 
+- **BIOBUZZ amendment (2026-09-14):** configure class-dependent modeled resting-object target
+  height/geometry for approximately 2.8-inch pollen and 3.6-inch nectar, with reviewed size/shape
+  variation. Preserve the effective model through projection, memory and selection. A configured
+  height is not measured height; do not claim that assuming floor contact identifies or rejects
+  airborne/elevated objects. Unsupported model conditions and unknown/conflicting classes remain
+  explicit. Test mixed-size scenes, wrong/missing models, changed model generations and ambiguous
+  classification without changing the one-owner or single-color simplicity requirements.
 - **Status:** **Proposed**; builds on VISION-03/04/06 and SPATIAL-02. No learned model required.
 - **Decision gate:** compare existing custom-processor seams/local adapters, metadata-only support,
   and one coherent classified observation path with a complete multi-color webcam consumer.
@@ -972,6 +1383,11 @@ disabled pending adopting-robot camera/footprint/intake/localization/power/clear
 
 ### SPATIAL-05 - Conservative unwanted-object contact geometry
 
+- **BIOBUZZ amendment (2026-09-14):** account explicitly for class-dependent physical dimensions
+  and conservative size/position allowances, including unknown-size policy. Preserve the separate
+  desired-center pickup window and possible-contact envelope; no hidden radius adjustment twice.
+  Extend mixed-size near-wall, tangent, wrong-color-outside-window/inside-risk and complete-turn/
+  approach tests. Model facts are authored assumptions, not measured object shape or clearance.
 - **Status:** **Proposed**; depends on SPATIAL-03 and coordinates with SPATIAL-04/PEDRO-03 for
   the exact modeled motion legs. Supplies geometry to AUTO-03, not another collection strategy.
 - **Confirmed distinction:** SPATIAL-03's narrow already-inset center window identifies desirable
@@ -1001,6 +1417,10 @@ disabled pending adopting-robot camera/footprint/intake/localization/power/clear
 
 ### Diagnostic follow-up intake (approved 2026-09-08)
 
+**Historical priority note:** the BIOBUZZ program now promotes DIAG-04 and DIAG-03 and orders the
+remaining diagnostics explicitly. The following original intake/publication record is preserved;
+its no-reprioritization statement describes that earlier change, not the current queue.
+
 The user requested explicit later tasks for worthwhile deferred integrations, then approved the
 combined DIAG-01 implementation and backlog plan with **"Implement the plan."** Add DIAG-02 through
 DIAG-07 as **Proposed**, not evidence-blocked **Deferred**: each still needs its own decision gate,
@@ -1012,6 +1432,10 @@ DIAG-01 implementation adds only its approved initial report/recording integrati
 tracker entries, not the six later implementations.
 
 ### Current Cuttlefish/Worlds follow-up order (approved 2026-09-08)
+
+**Superseded execution order:** use the BIOBUZZ season priority program for pending work. The
+following statements, including CAL-10-next and then-Proposed statuses, are historical intake
+decisions, not current task state. Preserve the frozen sources and fifteen capability rows.
 
 The user approved implementation of this **tracker-only intake** and explicitly retained
 **robustness first**. This adds ten **Proposed** items and two evidence-backed **Deferred** items;
@@ -1062,6 +1486,9 @@ not physical accuracy, successful capture, safe braking, or match benefit.
 
 ### Current robustness execution order (added 2026-09-07)
 
+**Historical completed program:** the BIOBUZZ season priority program controls pending work;
+this order and its approvals remain the record of the earlier robustness effort.
+
 The user approved this tracker-only intake and chose **robustness first**, before `AUDIT-01`.
 At that intake, all thirteen items were **Proposed**; the queue and detailed records now retain
 their individual completion states. The intake itself approved no designs and started no decision
@@ -1107,6 +1534,9 @@ Preserve the experiment policy: trial results are not persisted on the Robot Con
 
 ### Current Cuberobot/DECODE program order (amended 2026-08-31)
 
+**Historical completed program:** superseded for pending work by the BIOBUZZ season priority
+program. The original approval and comparison boundaries below are retained.
+
 The user's tracker-intake approvals establish this order without starting any decision gate or
 approving any public API:
 
@@ -1133,6 +1563,9 @@ terminal-disposition condition; it does not require unavailable hardware measure
 has a truthful evidence-backed deferral.
 
 ### Current NextFTC/FTCLib comparison follow-up (added 2026-08-31)
+
+**Historical execution order:** the BIOBUZZ season priority program is current; SOURCE-03 retains
+its later explicit Deferred state. This section records the earlier comparison decisions only.
 
 The user's comparison follow-up establishes this tracker-only order without starting a decision
 gate or approving an API:
@@ -33530,7 +33963,8 @@ The setup fragments below compare the recommendation design, not standalone robo
 
 ### DIAG-03 - Export trustworthy color-sensor samples
 
-- **Status:** **Proposed**; depends on DIAG-01, with no reprioritization of existing items.
+- **Status:** **Proposed**; depends on DIAG-01. Promoted by the BIOBUZZ program for onboard
+  color-sensor evidence; this is not webcam calibration/classification and does not block VISION-08.
 - **Evidence and owner:** `NormalizedColorSensorTester` freezes raw/normalized color on A but
   does not retain acquisition-time settings; gain can change while frozen and setter failure is
   not proof that a requested gain took effect.
@@ -33546,6 +33980,17 @@ The setup fragments below compare the recommendation design, not standalone robo
 ### DIAG-04 - Export AprilTag measurement reports
 
 - **Status:** **Proposed**; depends on DIAG-01, independent of DIAG-05's richer recording.
+- **BIOBUZZ amendment (2026-09-14):** promoted after VISION-11 in priority, not dependent on its
+  physical benefit evidence or joint-solver implementation. Retain the existing localization
+  report and evaluate one bounded target-relative report from available published tag/target
+  results. The latter describes camera-to-target/robot-to-target geometry, not field-to-robot
+  localization.
+  Preserve original capture, available contributing IDs/method/status, mount/target/calibration
+  configuration, missing evidence and distinct-frame counts; include VISION-11-specific fields
+  only after its producer contract exists. Reuse DIAG-01 transport/report mechanics in FTC-03's
+  practice configuration without new polling or another recorder. No raw image history or
+  requirement that a moving cell be admitted to a fixed layout. Unknown quality remains unknown;
+  spread, image-fit residual and agreement do not replace independent accuracy measurements.
 - **Evidence and owner:** `AprilTagLocalizationTester` captures a published estimate into running
   statistics; the aggregates currently discard timestamp/quality and repeated frames can increase
   the count. A finished report must not label those presses independent camera observations.
@@ -34553,6 +34998,9 @@ projectile model, second scheduler, or speculative write optimization was added.
 
 ### DOC-22 - Align capability guidance with outcome-aware sequences
 
+- **BIOBUZZ priority amendment (2026-09-14):** complete this existing documentation correction
+  before EXAMPLE-14/16 teach coordinated shooting or timeout-to-parking continuation. No new
+  Task behavior or season rule is added by this promotion.
 - **Status / intake authority:** **Proposed** by AUDIT-01's expressly allowed new-finding path.
   This records a future documentation repair, not approval to edit teaching or behavior now.
 - **Confirmed problem:** the route-outcome section of `Robot Capabilities & Mode Clients.md`
@@ -35964,6 +36412,14 @@ verification is claimed for this tracker-only design gate.
 
 ### EXAMPLE-13 - Bounded multi-object collection
 
+- **BIOBUZZ amendment (2026-09-14):** the season consumer follows AUTO-03's explicit G407/G408/
+  G409 admission, including the four-controlled-element bound, intentional external control,
+  forbidden opponent nectar and reviewed eligibility of dumped objects. Show current occupancy,
+  known controlled count and accepted-class progress as separate facts; unknown external control
+  is not an extra free slot. No ejection-time price permits an otherwise forbidden action.
+  Add deterministic externally herded-plus-internal, mixed-size/class, unsupported spill-history
+  and wrong/unknown-only progress scenarios. Keep season policy robot-owned and retain the
+  general handling-cost example only where its described activity is permitted.
 - **Status:** **Proposed**.
 - **Evidence and current callers:** the independent `robots/examples/pedro/adaptive` package
   already demonstrates capture-time projection, candidate selection, fresh attempts, start-built
@@ -36050,6 +36506,10 @@ verification is claimed for this tracker-only design gate.
 
 ### SENSOR-02 - Truthful directional range observations
 
+- **BIOBUZZ priority amendment (2026-09-14):** promoted before advanced collection because
+  moving cell tags are not unconditional fixed landmarks. Preserve the exact sensor timing and
+  directional-evidence contract; no new confidence, wall identity or unobservable coordinate is
+  inferred. Unavailable hardware evidence does not block an otherwise supported vision baseline.
 - **Status:** **Proposed**.
 - **Evidence and current callers:** `FtcSensors.distance(...)` and named inch/cm sources expose
   scalar measurements. They do not establish a beam frame, acquisition identity, or acquisition
@@ -36081,6 +36541,11 @@ verification is claimed for this tracker-only design gate.
 
 ### LOCALIZATION-05 - Known-wall localization constraints
 
+- **BIOBUZZ priority amendment (2026-09-14):** promoted after SENSOR-02 as an optional source
+  of observable wall constraints, not mandatory for existing odometry-based survey. Moving cell
+  tags remain excluded from unconditional fixed-landmark fusion. Preserve heading/timing shared
+  evidence, unobservable components and all physical validation gates; no season-specific wall
+  recognition or pivot-derived localization is introduced.
 - **Status:** **Proposed**.
 - **Evidence and current callers:** the pinned historical Cuttlefish solver relates range, mount,
   heading, and a known wall. Sushi gain-fusion and EKF correctors currently consume an
@@ -36115,7 +36580,13 @@ verification is claimed for this tracker-only design gate.
 
 ### AUDIT-02 - Cuttlefish/Worlds capability and simplicity closure
 
-- **Status:** **Proposed**, last in the separate 2026-09-08 follow-up.
+- **Status:** **Proposed**; closes the separate 2026-09-08 comparison after its actual
+  prerequisites, at the priority specified by the BIOBUZZ program.
+- **BIOBUZZ boundary (2026-09-14):** AUDIT-03 owns season rules and multi-tag target-pose closure.
+  Preserve this audit's fifteen rows, original sources and terminal-disposition requirements;
+  do not add BIOBUZZ tasks as blanket prerequisites or turn new season needs into attributed
+  World Championship capabilities. Cross-reference season work only where an actual maintained
+  consumer uses it. Optional VISION-09 unavailability still permits truthful closure.
 - **Pinned scope:** use the 2026-09-08 Cuttlefish/Worlds benchmark sources and fifteen capability
   rows above, preserving access, licensing, publication-date, and deployment caveats. Pin current
   Sushi at audit start; compare with the intake baseline where assessing changed robot-code burden.
