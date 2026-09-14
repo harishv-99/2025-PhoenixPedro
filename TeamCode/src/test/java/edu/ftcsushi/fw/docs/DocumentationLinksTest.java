@@ -2509,6 +2509,30 @@ public final class DocumentationLinksTest {
     }
 
     @Test
+    public void toolSweepLessonKeepsCenterGeometrySeparateFromCollectionAndTravelBounds()
+            throws IOException {
+        Path root = repositoryRoot();
+        Path framework = root.resolve(FRAMEWORK_DOCS_PATH);
+        String page = readUtf8(framework.resolve("docs/examples/Tool Center Sweeps.md"));
+        for (String concept : Arrays.asList("**center window**", "already-reduced center bounds",
+                "one fixed heading", "robot-center travel in inches", "does **not** constrain",
+                "fixed claw's center window", "keep holding", "**Keep real:**", "**Replace:**",
+                "**Cannot conclude:**", "**Read the causal chain:**", "In words:")) {
+            assertTrue("Missing sweep teaching boundary: " + concept, page.contains(concept));
+        }
+        assertTrue(page.indexOf("**center window**") < page.indexOf(".centerWindowInches("));
+        assertTrue(page.indexOf("An **encounter**") < page.indexOf("public static ToolSweep2d.Encounter"));
+        assertEquals(3, literalCount(page, "<!-- source-excerpt:"));
+        String svg = readUtf8(framework.resolve("docs/assets/diagrams/tool-center-window.svg"));
+        assertTrue(svg.contains("<title") && svg.contains("<desc") && svg.contains("viewBox="));
+        assertTrue(page.contains("tool-center-window.svg"));
+        assertTrue(readUtf8(root.resolve("zensical.toml")).contains(
+                "\"Check ball-center encounters\" = \"docs/examples/Tool Center Sweeps.md\""));
+        assertFalse(BUILD_NAV_TARGETS.contains("docs/examples/Tool Center Sweeps.md"));
+        assertFalse(GET_STARTED_NAV_TARGETS.contains("docs/examples/Tool Center Sweeps.md"));
+    }
+
+    @Test
     public void trackerApplicationScanProtectsGuidanceWithoutAbsorbingOtherItemInventories() {
         Pattern syntheticApplicationReference = Pattern.compile("(?i)demobot");
         List<String> openingGuidance = Arrays.asList(

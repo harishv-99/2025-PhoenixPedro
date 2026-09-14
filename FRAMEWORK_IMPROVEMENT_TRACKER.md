@@ -265,7 +265,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 151 | TASK-07 | Terminal Task cleanup composition | Done | Shared timed lifecycle, cleanup adopters, synchronized guides, and 2,759 passing tests; Android Studio review and destination-specific publication authorized on 2026-09-09. |
 | 152 | RUNTIME-04 | Managed registration ownership transfer | Done | Implemented the approved existing-method ownership contract and removed six caller guards. 2,910 tests and strict docs/Javadocs pass; user approved the reviewed diff and authorized branch publication and merge to master. |
 | 153 | VISION-04 | Bounded recent field-location memory | Done | Bounded memory, typed field selection/reference, and independent lesson reviewed; 3,054 tests and strict docs/API checks pass. User approved the reviewed diff and authorized exact branch/repository/master publication on 2026-09-11. Collection remains AUTO-03. |
-| 154 | SPATIAL-03 | Bounded intake-sweep geometry | Proposed | Answer point coverage for explicitly supported intake corridors without claiming capture or collision clearance. |
+| 154 | SPATIAL-03 | Bounded intake-sweep geometry | Done | ToolSweep2d center-window geometry, ball example, fixed-claw limits, and diagram reviewed. 3,156 tests and combined docs checks pass; user approved the reviewed diff and exact branch/repository/master publication on 2026-09-14. |
 | 155 | EXAMPLE-13 | Bounded multi-object collection | Proposed | Extend the maintained adaptive-collection example with robot-owned ordering, capacity, return cost, confirmation, and fallback. |
 | 156 | CTRL-03 | Coherent externally supplied motion setpoints | Proposed | Evaluate one position/velocity/acceleration input through the existing Plant control path, only with concrete adopter simplification. |
 | 157 | SENSOR-02 | Truthful directional range observations | Proposed | Expose directional range and available timing evidence at the sensor boundary without inventing acquisition timestamps or localization policy. |
@@ -331,8 +331,9 @@ The current branch implements VISION-06 only; later records retain their own dec
   time/provenance, deterministic oldest eviction, frame deduplication, and owner/generation keys.
   Clock, coordinate, camera, and incompatible trajectory resets invalidate evidence. An empty
   image never proves absence. Memory does not disguise multi-frame records as one fresh frame.
-- SPATIAL-03 supplies pure fixed-heading intake-corridor encounter geometry: tool offset once,
-  explicit width/end bounds, finite and degenerate cases, and no capture or robot-clearance claim.
+- SPATIAL-03 supplies pure fixed-heading tool-center-window encounter geometry: tool offset once,
+  explicit conservative ball-center width/end bounds, finite and degenerate cases, and no capture
+  or robot-clearance claim. The window is not the physical opening or a ball-overlap test.
   AUTO-03, rather than example-local loops, owns reusable bounded candidate enumeration and ranking.
 - EXAMPLE-13 becomes the complete independent consumer of these framework owners. Robot code
   supplies geometry, camera/localization, intake feedback, constraints, and intent rather than
@@ -35481,14 +35482,17 @@ verification is claimed for this tracker-only design gate.
 
 ### SPATIAL-03 - Bounded intake-sweep geometry
 
-- **Status:** **Proposed**.
+- **Status:** **Done**. On 2026-09-14 the user approved the modified design: reasonably
+  support a claw while focusing the example on balls. This authorizes SPATIAL-03 implementation,
+  not publication. Fetched `origin/master` at DRIVE-06 merge `1316d3e` and created
+  `codex/spatial-03-intake-sweep-geometry` from that ref, preserving the scoped design/doc edits.
 - **Evidence and current callers:** Cuttlefish's intake-width coverage and I.C.E.'s multi-detection
   curve show why visiting every center can be unnecessary. Sushi `RobotFrameRectangle2d` tests
   containment at a pose; `VisionPickup` selects one-target approach templates. Those are not a
   swept intake-coverage query. Inspect current spatial value types, boundary/approach tests, and
   the adaptive collection path consumer before extending core geometry.
-- **Bounded scope / leading hypothesis:** pure point-coverage calculations for an explicitly
-  supported intake corridor, beginning with a fixed-heading straight segment if sufficient.
+- **Bounded scope / leading hypothesis:** pure modeled-ball-center coverage calculations for an
+  explicitly supported intake corridor, beginning with a fixed-heading straight segment if sufficient.
   Name the intake tool offset, width, longitudinal/end bounds, units, and field frame. Apply the
   tool offset once. The result describes geometric coverage, not capture, robot-body clearance,
   free space between sampled poses, or an arbitrary curved swept-body collision certificate.
@@ -35502,13 +35506,255 @@ verification is claimed for this tracker-only design gate.
   zero-length motion under the chosen contract, tangential boundaries, duplicate points, rotated
   corridors, field-frame transforms, finite extremes, and near-wall cases that must not imply
   body clearance. Reject unsupported motion explicitly rather than certify sampled positions.
-  Add a focused compiling geometry consumer and a labeled footprint/coverage diagram with text.
+  Add a focused compiling geometry consumer and a labeled center-window/sweep diagram with text;
+  distinguish the smaller center window from the physical intake opening and whole-robot bounds.
 - **Dependencies / completion / deferral:** build on SPATIAL-01/02 and existing geometry contracts;
   recent-location memory is not a mathematical prerequisite. EXAMPLE-13 later consumes the result.
   Software geometry can complete without a robot, but actual capture and clearance require the
   adopting robot's measured footprint, contact rules, and validation. If no distinct reusable
   query improves complete callers, retain local geometry through a verified no-change disposition;
   defer unsupported shape claims with the precise motion/accuracy evidence needed to resume.
+
+#### SPATIAL-03 decision gate (2026-09-14)
+
+- **Confirmed gap and caller audit:** `RobotFrameRectangle2d` checks transformed corners at one
+  pose; a point `Region2d` reports signed distance/containment in one region. Neither computes
+  continuous intake-window encounters along a segment. `VisionPickup` uses an authored body
+  envelope, target regions, and one-target staging/final policy; `ReferenceParkingPlan` checks a
+  robot rectangle against a known-clear box. Preserve both. `AdaptiveCollectionProjection` ranks
+  projected points into field-Y bands, while `AdaptiveCollectionPaths` builds a straight Pedro
+  position path with linear heading interpolation. That path can change heading and must not be
+  silently certified by a fixed-heading sweep. No current production or framework-tool caller
+  implements this sweep contract. The production localization plausibility-region consumer uses
+  `FtcFieldRegions`, not intake geometry; it needs no migration. Existing guidance/approach and
+  recent-memory owners stay unchanged.
+- **Existing public layers and disposition:** `RobotFrameRectangle2d` has only the named
+  `centeredInches(length, width)` and `fromRobotFrameBoundsInches(minX, maxX, minY, maxY)` factories,
+  with a private constructor. Centered dimensions and asymmetric robot bounds remain distinct
+  authoring capabilities. `AxisAlignedBoxRegion2d` has one public four-bound constructor, which
+  normalizes order and permits zero area; `Region2d` is the advanced custom-region contract.
+  `FtcFieldRegions.fullField()` / `fullFieldWithMargin(...)` return `Region2d` and supply FTC field
+  facts, not duplicate intake construction. Keep these supported contracts. `ApproachResult2d`
+  retains `unavailable(...)`, `observedFieldPose(...)`, `forTarget(...)`, and `committedFor(...)`
+  for arbitrary/target-derived robot-center destinations and their distinct evidence/intent lifetime;
+  `SpatialApproach2d.facePoint(...)` retains the sole point-facing relationship construction.
+  Their query/spec and guidance plan/spec consumers do not describe travel geometry. No legacy
+  layer is being retained alongside a replacement, and no sibling overload is added for symmetry.
+- **Chosen public surface:** one immutable core `ToolSweep2d`, one staged construction path,
+  and one nested immutable `Encounter` result. No public constructors, `of`/builder aliases,
+  separate corridor config, generic path/footprint hierarchy, signed-distance implementation,
+  observation/memory overloads, list/count/ranking operations, or controller ownership.
+  Name the final answer `centerWindowInches(...)` and the query `encounterFieldCenter(...)` so
+  robot code identifies the expected center semantics, not arbitrary blob-edge contact.
+
+  ```java
+  Pose2d fieldToRobotStart = new Pose2d(10.0, 20.0, 0.0);
+  Pose2d robotToIntake = new Pose2d(6.0, 1.0, 0.0);
+  ToolSweep2d sweep = ToolSweep2d.straightFrom(fieldToRobotStart)
+          .toFieldPoint(30.0, 20.0)
+          .throughTool(robotToIntake)
+          .centerWindowInches(-1.0, 2.0, 6.0);
+  ToolSweep2d.Encounter encounter = sweep.encounterFieldCenter(25.0, 22.0);
+  if (encounter.hasEncounter()) {
+      double firstTravelInches = encounter.entryTravelInches(); // 7 inches
+      double lastTravelInches = encounter.exitTravelInches();   // 10 inches
+  }
+  ```
+
+  The start answers field position AND the one fixed robot heading; the end answers field X/Y
+  only, so no heading is silently ignored or approximately equated. The tool answers its rigid
+  robot-relative origin/direction once. Center-window arguments answer minimum/maximum acceptable
+  center-forward extent and full centered lateral width, all in inches: here forward [-1, 2],
+  left/right [-3, 3]. These are illustrative already-reduced center bounds, not opening dimensions.
+  Travel is distance along the modeled robot-center segment, not tool-to-ball range, elapsed time,
+  actual measured progress, or a Pedro parameter. These calls compute data and never move hardware.
+- **Parameter use and construction enforcement:** poses are existing immutable geometry values
+  which robot configuration stores/shares independently. Center-window answers and endpoint coordinates
+  are direct stage arguments; no new value type is justified just to package inline numbers.
+  The completed sweep is independently useful across multiple point queries. Each retained stage
+  must construct isolated immutable answers; reusing an earlier stage cannot mutate a completed
+  sweep or make two completed sweeps share mutable state. Private stage implementations return
+  only the required next stage, with the final window answer returning `ToolSweep2d` directly.
+- **Mathematical contract:** fixed-heading straight robot-center translation in any field direction
+  (forward, reverse, sideways, or diagonal) with a fixed tool mount. Transform the estimated field center and
+  segment displacement into that one tool frame, applying the offset exactly once. With initial
+  tool-relative point q and tool-relative displacement v, intersect the closed parameter intervals
+  where `minForward <= q.x - t*v.x <= maxForward` and
+  `-width/2 <= q.y - t*v.y <= width/2`, for `0 <= t <= 1`. This is continuous analytic two-axis
+  interval clipping, not samples, an enlarged field-axis bounding box, a line-distance capsule,
+  or an approximation claiming the region between samples is clear. Work/storage per query is
+  constant; no hidden search or candidate loop is introduced.
+- **Endpoints and degeneracy:** finite positive full width must retain a representable positive
+  half-width. Finite ordered forward bounds permit equality for a zero-depth center window and
+  permit negative bounds when deliberately authored behind the tool origin. Boundaries, including
+  tangency and exact start/end encounters, are included without an undocumented epsilon or width
+  inflation. These are the deliberately inset center-window boundaries, not physical opening edges.
+  A zero-length segment queries the stationary center window; an encounter has entry and exit
+  travel both zero. Reversal with fixed heading reverses travel order, not tool orientation.
+  A stationary/sideways/reverse geometric encounter does not imply an effective physical intake.
+- **Failures and result truth:** null required geometry fails with a named null-argument error;
+  non-finite geometry/point coordinates, reversed longitudinal bounds, invalid width, and required
+  arithmetic that is not finitely representable fail fast with actionable argument errors. Never
+  turn invalid geometry into an ordinary miss. Handle zero displacement on an axis without
+  dividing by an epsilon, and avoid avoidable overflow in clipped interval calculations. A valid
+  miss has `hasEncounter() == false`; entry/exit access then throws rather than returning fabricated
+  zero or a sentinel range. A valid encounter exposes finite ordered travel distances within the
+  segment. Duplicate point queries return the same geometry, not a unique-object count. There is
+  no ball-radius inflation, observed identity, age renewal, occupancy/capture fact, or pose rebase.
+  Callers retain their source evidence and supply estimated centers in the same field coordinates as the
+  segment. Freshness/admission and reconciliation remain with existing owners and later AUTO-03.
+- **Center semantics / user clarification (2026-09-14):** the user requires testing the ball's
+  center, not overlap with its outer edge. A center at the physical intake edge may bounce away;
+  even whole-ball tangency provides no extra clearance. The robot author supplies a conservative
+  center window already accounting for ball size and additional tested allowances. Forward/back
+  bounds are center bounds too. Use `ToolSweep2d` and `Encounter` (geometry, not capture); rename
+  the previously proposed `windowInches` / `encounterFieldPoint` to the center-specific names above.
+  Do not add physical-opening dimensions, ball radius, hidden shrink/inflation, a capture score,
+  or a second configuration path. Inclusive mathematical boundaries remain valid for the chosen
+  inner window; changing them to exclusive would not create useful physical clearance.
+  - The existing `FloorTargetModel` / `FloorTargetProjection` report a modeled reference point,
+    not a measured sphere center. Webcam box-center rays and Limelight targeting points must be
+    validated as suitable center estimates in the adopted viewing conditions before such use.
+    Merely choosing radius as reference height is insufficient. Missing validation is not fixed
+    by enlarging the window. Preserve generic observation/projection API names and truthful
+    provenance; do not introduce an unapproved center estimator or relabel all observations.
+  - The optional `Vision Targets.md` teaches this distinction at the vision-to-geometry boundary.
+    Its conceptual example uses a 12-inch opening, 4-inch ball, and
+    6-inch center window: lateral centers at +/-6 leave half the ball outside, +/-4 leave zero
+    extra side clearance, and +/-3 leave one inch. These are illustrative simplified geometry,
+    not recommended dimensions or capture evidence. The later sweep lesson/diagram must repeat
+    the distinction at the actual configuration point, show center markers on ball outlines,
+    and explicitly label physical opening, reduced center window, and edge-contact rejection.
+  - The initial center-semantics request authorized documentation refinement only. The subsequent
+    modified-design approval above closes the implementation gate; publication remains gated.
+- **Claw refinement / approved boundary:** name the core `ToolSweep2d`, not an intake-specific
+  primitive, because its fixed tool transform and center window have the same mathematical meaning
+  for a rigid claw. The ball-focused example remains `IntakeSweepExample`. A stationary window can
+  ask whether a center is positioned for a fixed claw; a translating window computes encounters,
+  not a grasp destination or grasp success. Height, orientation, moving arms, closing, lifting,
+  holding, and independent grip confirmation stay mechanism-owned. Existing `SpatialApproach2d`
+  can stage a fixed tool with a positive stand-off; no new approach spelling is needed. Do not
+  repurpose `GuidedApproach.cameraOnly(...).finalIntake(...)` as close/open: its terminal cleanup
+  requests stopped intake even after success and would not express persistent claw holding.
+  Preserve that intake lifecycle and every existing caller. No generic pickup lifecycle is added.
+- **Alternatives and simplicity comparison:** documentation-only cannot answer the new question.
+  Local code repeats field/tool transforms, two-axis clipping, zero-axis and endpoint handling,
+  and ordered encounter distances for every consumer. A single seven-argument static factory is
+  compact but groups endpoint coordinates, mount, and window numbers without named questions.
+  The staged path adds method names but asks those same four conceptual decisions once and
+  prevents a partially answered sweep. A reusable window/config or separate segment DSL adds
+  public nouns without a current independent consumer. Extending `Region2d` falsely promises a
+  signed-distance contract; extending the robot rectangle conflates body-corner checks with a
+  rotated tool window. Arbitrary curves/turns or sampled path unions broaden the proof burden and
+  risk certifying unexamined space. Reject those alternatives; preserve existing APIs and callers.
+- **Bounded implementation and teaching:** add only the pure core geometry, regression tests, and
+  one complete hardware-free maintained geometry consumer under `robots.examples.intakesweep`.
+  Use a small fixed set of authored points to show individual encounter intervals without adding
+  candidate ranking, capacity, motion, or collection policy. Add one optional lesson explaining
+  center-window width, tool offset, finite segment endpoints, and modeled encounter before its first code;
+  show the fixture above and a labeled top-down SVG with units/frames and a nearby text equivalent.
+  Explain a hit near a wall still says nothing about body clearance. Synchronize spatial guide,
+  quick reference, example index, optional Advanced navigation, Javadocs, and excerpt/link checks.
+  Initial Get Started/Learn/Build navigation remains unchanged. Do not modify production robot
+  behavior or migrate the adaptive/bounded-pickup strategies to an unexecuted sweep assumption.
+- **Verification plan and independent reviews:** API/caller and geometry reviews independently
+  confirmed the distinct missing capability and the analytic fixed-heading contract. Cover the
+  fixture above; offset and rotated-tool cases; a whole-field rigid rotation preserving results;
+  forward/reverse/sideways/diagonal motion; stationary inside/outside; zero-depth and positive-depth
+  windows; exact and adjacent-representable boundaries; initial/end/tangent encounters; duplicate
+  points; non-finite inputs, underflow/overflow, large headings, and retained-stage isolation.
+  Add an inset-window fixture: a center on the physical opening edge and ball overlap outside the
+  center window must miss; a center on the chosen inner boundary is included without radius
+  inflation or double-shrinking. This proves literal center-window math, not physical collection.
+  Include a diagonal point inside the swept axis-aligned bounding box but outside the actual
+  corridor, and a near-wall hit with no clearance claim. Use independently derived intervals,
+  not the production transform/clipper as the test oracle. Run focused geometry/example/docs tests,
+  full TeamCode tests/compilation, strict narrative/Javadocs/generated-link checks, and whitespace
+  checks before Android Studio review. No implementation tests or physical runs are claimed by
+  this decision gate. Software-only geometry requires no pre-implementation hardware evidence;
+  capture effectiveness, clearance, real pose error, and trajectory execution remain unproven.
+- **Implementation approval / next stop:** the user approved the modified public surface above;
+  implement on `codex/spatial-03-intake-sweep-geometry` and stop for Android Studio review with the
+  skill's destination-specific publication prompt. SPATIAL-04 owns body travel bounds,
+  PEDRO-03 owns checked motion execution, and
+  AUTO-03 owns capacity-aware enumeration/ranking; none is implemented under this approval.
+
+#### SPATIAL-03 implementation and review (2026-09-14)
+
+- **Implemented surface:** `ToolSweep2d.straightFrom(...)` returns `EndpointStage`; the sole
+  endpoint answer returns `ToolStage`, the fixed mount returns `CenterWindowStage`, and the
+  center-window answer returns the finished immutable sweep. All concrete constructors and the
+  `Encounter` constructor are private. No companion config, facade, builder alias, list operation,
+  controller, or evidence owner was added. Existing region/rectangle/approach public layers retain
+  their distinct capabilities and current callers; no redundant replacement layer is retained.
+- **Numerical implementation:** analytic two-axis clipping computes robot travel directly, an
+  algebraically equivalent form of the approved t-interval calculation. Scaled multiplication
+  retains representable travel when t itself would underflow. Finite validation includes both
+  tool poses and both query endpoint coordinates before an ordinary miss can short-circuit.
+  Boundaries use ordinary double-precision geometry without an added epsilon; no exact rational
+  predicate is promised at ill-conditioned rotated/subtracted boundaries. A diagonal nextDown
+  fixture that rounded back onto the same boundary was corrected to an actually distinct point;
+  direct-axis adjacent-representable tests remain. No physical tolerance was added to pass a test.
+- **Complete consumer:** `robots.examples.intakesweep.IntakeSweepExample` privately constructs one
+  illustrative immutable sweep and returns the framework `Encounter` directly from its sole
+  `encounterBallCenter(...)` call. The example's test supplies authored stationary centers; there
+  is no camera, OpMode, clock, hardware, candidate enumeration, mirrored result, or capture policy.
+  This is a deliberately hardware-free calculation, not an alternative FTC host or robot simulator.
+- **Independent review:** API/caller audit reconfirmed the construction-path inventory and distinct
+  sibling layers; the unchanged adaptive Pedro path may change heading and is not silently
+  certified. Separate geometry/documentation audit checked clipping signs, distance units,
+  numerical branches, exact excerpts, center-window diagram coordinates, and claw limits; no
+  blocking findings remained. Root added eight independent transformed-field, oblique-tool,
+  stationary-claw, near-wall, both-direction tiny-ratio, and invalid-other-axis fixtures. A second
+  reviewer independently checked those expectations rather than using the implementation as oracle.
+- **Concept checklist / entry-route review:**
+
+  | Page / audience | Central outcome and required concepts | First explanation / first required use | Optional depth |
+  |---|---|---|---|
+  | `Tool Center Sweeps.md` / optional geometry learner with robot/field coordinates | Predict one center encounter; reduced window, tool origin, pose, straight sweep, staged answers, encounter travel | Physical opening vs center window and radius before any code; pose/axes/fixed heading before construction; each active numeric answer beside setup; encounter before query/result; assertion argument meaning beside checkpoint | Exact Javadocs; vision center-estimate validation; existing tool-relative approach; fixed-claw and physical limits at end |
+  | `Vision Targets.md` / optional camera learner | Do not relabel an image reference as a physical ball center | Center-window definition before numerical opening/ball/window comparison; physical-center validation before the linked planning calculation | Focused sweep lesson and existing projection contracts |
+  | `Spatial Queries.md` / optional geometry reference | Distinguish straight center encounters from a destination or body check | Window/sweep/encounter definitions precede staged spelling; travel/capture/bounds distinctions adjacent | Complete ball example and API contract |
+  | Drive geometry quick reference / returning user | Find the sole factory by its question | Row explicitly names center encounters, fixed heading, and no capture/body-clearance claim | Canonical lesson and Javadoc |
+  | Examples index / optional pattern seeker | Choose the calculation-only example | Outcome explicitly says without driving | Canonical lesson; no new prerequisite chain |
+
+  Get Started, Learn, and Build navigation is unchanged. The sole new lesson is in Advanced;
+  required prerequisites are existing coordinate lessons, with no circular prerequisite. The
+  reference/index links lead to that one lesson, not a second tutorial. All three Java excerpts
+  carry exact checked-in provenance; the checkpoint keeps real example configuration/calculation
+  and substitutes only authored centers. Its numerical result is not hardware evidence.
+- **Initial automated/visual evidence:** focused geometry/example/docs run passed **96 tests in
+  4 suites**, with zero failures/errors/skips; strict Zensical build passed in **54.59 seconds**.
+  The SVG was rasterized locally and inspected at **440px and 330px** widths; labels, center dots,
+  physical sides, inset boundaries, and units were readable and matched the independent geometry.
+  Its opaque white artwork preserves label contrast across themes. The Browser skill connection
+  and its documented discovery check returned no available browser, so interactive generated-site
+  desktop/mobile and light/dark inspection remains a human review check, not an automated claim.
+  This does not establish physical capture effectiveness or grasp suitability.
+- **Final automated evidence:** full `:TeamCode:compileDebugJavaWithJavac`,
+  `:TeamCode:testDebugUnitTest`, and `:TeamCode:sushiJavadocs` passed; JUnit XML reports
+  **3,156 tests in 316 suites**, zero failures/errors/skips (**36 added tests**: 21 core, 8
+  independent boundary, 6 example, 1 documentation). The final guide rebuild passed strict
+  Zensical in **37.25 seconds**, followed by successful Javadoc regeneration. Generated search
+  verification passed with **1,075 indexed sections** across six areas; generated-link verification
+  passed with **263 API links and 110 maintained source links across 61 Markdown pages**. The
+  artifact checker initially rejected two source-link label formats; both now use the repository's
+  canonical Complete source label and the rebuilt artifact passes. Existing Java 8 source/target
+  and FTC controller deprecation warnings remain; no new compilation/Javadoc failure remains.
+  `git diff --check` and a trailing-whitespace/control-character scan covering all **15** modified
+  and new files passed. Nothing is staged or published.
+- **Android Studio review / publication coordinates:** inspect `ToolSweep2d` and its staged
+  factory, center-boundary inclusion, travel semantics, numerical/invalid-input cases, independent
+  fixed-claw and near-wall tests, `IntakeSweepExample`, and `Tool Center Sweeps.md` with its SVG.
+  Review generated-site wide/narrow/light/dark navigation when a browser is available. No physical
+  run is required to establish this pure mathematical contract; real center-estimate suitability,
+  motion/territory clearance, and capture or grip performance remain adopting-robot validation.
+  Item branch: `codex/spatial-03-intake-sweep-geometry`; resolved `origin` push URL:
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`; target: `master`.
+  The user subsequently supplied that exact combined authorization on 2026-09-14, approving the
+  reviewed diff and authorizing commit, push to the named repository, pull request, and merge into
+  `master`. Manual review is accepted; no independent physical or browser run is inferred from it.
+  Their additional request authorizes a separate tracker-only multi-color follow-up intake, not
+  additional implementation in this reviewed diff or beginning SPATIAL-04.
 
 ### EXAMPLE-13 - Bounded multi-object collection
 

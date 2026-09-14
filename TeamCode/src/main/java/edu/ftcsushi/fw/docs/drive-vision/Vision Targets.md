@@ -49,6 +49,44 @@ camera-to-target line-of-sight limit established for your camera and target mode
 For resting balls, validate the chosen aim point and height with real measurements at several
 distances; do not silently label this estimate an exact ball center.
 
+### Plan for the ball's center, not edge contact
+
+For intake planning, a **center window** means the chosen range of acceptable ball-center
+positions relative to the intake. It is smaller than the full physical opening when edge contact
+could deflect the ball. Test the estimated **center point**, not whether any part of the ball
+overlaps the intake. Even putting the center exactly at the physical intake edge can leave much
+of the ball outside and cause it to bounce away.
+
+For illustration only, suppose an opening is 12 inches wide and a ball is 4 inches across.
+Measure sideways from the middle of the opening:
+
+| Center position | What the simplified geometry says |
+|---|---|
+| 6 inches to either side | The center is at the physical opening edge; half the ball extends beyond it |
+| 4 inches to either side | The ball's outer edge reaches the opening edge; there is no extra clearance |
+| At most 3 inches to either side | A chosen 6-inch-wide center window leaves at least 1 extra inch on either side of the ball |
+
+The 6-inch center window is an illustrative allowance, not a recommended setting or proof of
+capture. Choose the usable center width and forward/back bounds for the actual ball and mechanism,
+allowing for position error, approach direction, and motion. These are already-reduced **center**
+bounds: do not enlarge them by the ball's radius (half its diameter), or subtract that allowance
+again. A point on a configured inner-window boundary is not a point on the physical opening edge.
+No strict-versus-inclusive comparison can replace a meaningful physical allowance.
+
+Before treating a projected reference point as a center estimate, validate it against actual ball
+centers over the intended distances and viewing conditions, including partial visibility. Choosing
+a height equal to the ball's radius does not by itself turn a detected image-box center into a
+physical-center measurement. If that relationship is not established, the reference point alone
+does not justify center-based intake planning; enlarging the window does not repair the evidence.
+Even an estimated center inside a well-chosen window does not confirm capture: independent intake
+feedback still supplies that fact. This window also says nothing about where the **whole robot**
+may travel on the field.
+
+For a hardware-free calculation using these center semantics, see
+[check which ball centers a straight move would encounter](<../examples/Tool Center Sweeps.md>).
+Its fixed tool window can also represent planar positioning geometry for a claw; it does not
+execute either intake collection or a grasp.
+
 ## One camera, separate borrowed views
 
 [`FtcWebcamVisionLane`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/vision/FtcWebcamVisionLane.html>)
