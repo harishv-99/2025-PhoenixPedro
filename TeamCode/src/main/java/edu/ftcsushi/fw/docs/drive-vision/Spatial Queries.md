@@ -160,6 +160,53 @@ state.
 
 ## Control frame vs camera frame
 
+### Face a point and stop short of it
+
+An intake often needs two things at once: point toward a ball and leave a small gap before the
+final pickup. **Stand-off** is that gap, measured in inches from the tool origin along its forward
+axis. An **approach description** combines the target point, the tool's fixed position/direction
+on the robot, and a positive stand-off. It describes a relationship, not a path or capture result.
+
+[`SpatialApproach2d.facePoint(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialApproach2d.html>)
+supplies both translation and facing to the existing query. Here `selected` is the visible-object
+source from [Locate a vision target](<Vision Targets.md>), including its capture-age limit:
+
+```java
+ReferencePoint2d point = References.selectedTargetPoint(selected);
+Pose2d robotToIntake = new Pose2d(6.0, 1.0, 0.0);
+SpatialApproach2d approach = SpatialApproach2d.facePoint(point, robotToIntake, 2.0);
+SpatialQuery query = SpatialQuery.builder().approach(approach)
+        .solveWith(SpatialSolveSet.builder().observedPoints().build())
+        .build();
+```
+
+These setup calls do not move hardware or sample the camera. The illustrative intake origin is
+6 inches forward and 1 inch left of robot center, facing robot-forward; the stand-off is 2 inches.
+At zero approach error, the observed target is therefore at `(8, 1)` in robot coordinates. The
+framework applies the intake offset once: facing is measured at the intake, and translation at
+the point 2 inches forward of it. Replace these values with reviewed robot geometry.
+
+The same description enters `DriveGuidance.plan().approach(approach)`. Use
+`SpatialQuerySpec.builder().approach(approach)` only when sharing an immutable description among
+independent runtime queries. An approach already answers both target and control-frame questions;
+the builder does not ask them again.
+
+| Point being approached | Reference | Required evidence mode |
+|---|---|---|
+| Chosen visible object | `References.selectedTargetPoint(selected)` | `observedPoints()`; or `absolutePose(...)` when capture-time field projection exists |
+| Remembered field location | `References.selectedFieldTargetPoint(rememberedSelection)` | `absolutePose(...)` with usable pose and memory evidence |
+| Point offset from a selected tag | `References.relativeToSelectedTagPoint(selectedTag, forward, left)` | `relativeAprilTags(...)`; or `absolutePose(...)` with a fixed tag layout |
+
+Changing the reference does not change the approach grammar or fabricate missing evidence. A
+remembered point is not a new camera frame, and a held tag ID alone is not a solved location.
+If the desired heading must be fixed by a fixture rather than face the point, keep the explicit
+frame-point/frame-heading path below.
+
+An approach query's `frameDistanceInches()` measures **remaining translation error**, not distance
+from the intake to the ball. At completion that error is zero while the 2-inch gap remains. To
+measure actual tool-to-target range, use a translation-only point query whose control frame is
+the tool origin, without an approach stand-off.
+
 ### Observed points and computed approaches
 
 An observed target and a desired robot destination answer different questions. After
@@ -178,6 +225,9 @@ a desired **robot-center field pose**, already accounting for the chosen tool of
 Translate to `References.framePoint(frame)` and face its heading using robot-center control frames.
 Both tags and located objects can support this destination; tag-relative points/frames still
 retain their specialized identity and orientation semantics.
+
+This computed destination differs from `SpatialApproach2d`: it names a robot-center field pose
+with an authored heading, rather than continuously asking the tool to face a selected point.
 
 Solutions retain `targetObservationTimestamp` separately from `robotPoseTimestamp`. Direct
 observed-point solving has no robot-pose estimate, so the latter is unavailable. For a live

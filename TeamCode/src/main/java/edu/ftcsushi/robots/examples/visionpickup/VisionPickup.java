@@ -21,6 +21,7 @@ import edu.ftcsushi.fw.drive.guidance.DriveGuidanceStatus;
 import edu.ftcsushi.fw.ftc.RobotProgram;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.PoseTrajectoryEstimator;
+import edu.ftcsushi.fw.sensing.observation.OccupancyObservation;
 import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
@@ -231,32 +232,6 @@ public final class VisionPickup implements RobotProgram.Service {
         }
     }
 
-    /** Mechanism-owned sensor evidence; unavailable is not an empty intake. */
-    public static final class CaptureFeedback {
-        public final boolean available;
-        public final boolean occupied;
-        public final LoopTimestamp timestamp;
-
-        private CaptureFeedback(boolean available, boolean occupied, LoopTimestamp timestamp) {
-            this.available = available;
-            this.occupied = occupied;
-            this.timestamp = Objects.requireNonNull(timestamp, "capture timestamp");
-        }
-
-        /** Records the mechanism sensor's accepted occupied/empty observation at its original time. */
-        public static CaptureFeedback observed(boolean occupied, LoopTimestamp timestamp) {
-            if (!Objects.requireNonNull(timestamp, "timestamp").isAvailable()) {
-                throw new IllegalArgumentException("observed capture feedback requires a timestamp");
-            }
-            return new CaptureFeedback(true, occupied, timestamp);
-        }
-
-        /** No usable sensor sample; never means empty or captured. */
-        public static CaptureFeedback unavailable() {
-            return new CaptureFeedback(false, false, LoopTimestamp.unavailable());
-        }
-    }
-
     /** Arrival and final-intake phases remain visible independently of the Task's outcome. */
     public enum Phase { IDLE, STAGING, RECHECK, FINAL_INTAKE, DONE }
 
@@ -307,7 +282,7 @@ public final class VisionPickup implements RobotProgram.Service {
     private final Config config;
     private final Source<TargetSelectionResult> selection;
     private final PoseTrajectoryEstimator localization;
-    private final Source<CaptureFeedback> captureFeedback;
+    private final Source<OccupancyObservation> captureFeedback;
     private final Consumer<Boolean> requestIntake;
     private final DriveSource manualDrive;
     private final DriveGuidanceQuery aimQuery;
@@ -349,7 +324,7 @@ public final class VisionPickup implements RobotProgram.Service {
      * the history of a trajectory change that happened before this owner existed.
      */
     public VisionPickup(Config config, Source<TargetSelectionResult> selection,
-                        PoseTrajectoryEstimator localization, Source<CaptureFeedback> captureFeedback,
+                        PoseTrajectoryEstimator localization, Source<OccupancyObservation> captureFeedback,
                         Consumer<Boolean> requestIntake, DriveSource manualDrive) {
         this.config = Objects.requireNonNull(config, "config").snapshot();
         this.selection = Objects.requireNonNull(selection, "selection");
@@ -745,7 +720,7 @@ public final class VisionPickup implements RobotProgram.Service {
                 if (!isLive()) return;
                 problem = targetProblem(selected, clock);
                 if (problem != null) { finish(TaskOutcome.CANCELLED, problem); return; }
-                CaptureFeedback feedback = Objects.requireNonNull(captureFeedback.get(clock), "capture feedback");
+                OccupancyObservation feedback = Objects.requireNonNull(captureFeedback.get(clock), "capture feedback");
                 if (!isLive()) return;
                 canConfirm = feedback.available && feedback.timestamp.isFresh(clock, config.maxCaptureAgeSec);
                 if (canConfirm && feedback.occupied) { finish(TaskOutcome.CANCELLED, "intake already occupied before attempt"); return; }
@@ -959,7 +934,7 @@ public final class VisionPickup implements RobotProgram.Service {
         }
 
         private boolean observeCapture(LoopClock clock) {
-            CaptureFeedback feedback = Objects.requireNonNull(captureFeedback.get(clock), "capture feedback");
+            OccupancyObservation feedback = Objects.requireNonNull(captureFeedback.get(clock), "capture feedback");
             if (!isLive()) return false;
             if (!feedback.available || !feedback.timestamp.isFresh(clock, config.maxCaptureAgeSec)) {
                 canConfirm = false;

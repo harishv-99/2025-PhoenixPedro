@@ -304,6 +304,12 @@ identity, not a cached camera answer: the chosen solve source must supply its ow
 fresh selected-tag observation. For example, a selector using camera A cannot lend its observation
 to a guidance solve explicitly configured with camera B.
 
+When the tool should simply face the point and stop at a positive stand-off, use
+[`SpatialApproach2d.facePoint(scoringPoint, robotToTool, standOffInches)`](<Spatial Queries.md#face-a-point-and-stop-short-of-it>)
+instead of authoring a frame heading. Visible objects and remembered field locations use that
+same description with their own point references and appropriate evidence modes. This shared
+geometry does not make anonymous balls identifiable or make a remembered sighting fresh.
+
 Choose the distance convention deliberately: a translation solution's `frameDistanceInches()` is
 planar distance from the configured control frame to the target point. It is not automatically
 3D camera-to-tag-center distance. Use the same selected ID and evidence policy for aim and range;
@@ -351,3 +357,6 @@ Before physical use, separately verify stream resolution/calibration, mount sign
 height, color thresholds, latency, pipeline readiness, and location error against measured
 distances. No pickup is physically enabled by this guide. Next, use the chosen point for
 [shared aim and approach guidance](<Drive Guidance.md#use-an-observed-object-or-a-computed-approach>).
+For the distinct no-localization pickup lifecycle, see the optional
+[Camera-only pickup](<../examples/Camera-only Pickup.md>) example: it authorizes a short final
+move while the target is still visible and requires an independent sensor to confirm capture.

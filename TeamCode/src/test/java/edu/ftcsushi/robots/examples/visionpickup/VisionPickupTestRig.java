@@ -15,6 +15,7 @@ import edu.ftcsushi.fw.drive.guidance.DriveGuidancePlan;
 import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.PoseTrajectoryEstimator;
+import edu.ftcsushi.fw.sensing.observation.OccupancyObservation;
 import edu.ftcsushi.fw.sensing.observation.ObservationSources;
 import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
@@ -41,7 +42,7 @@ final class VisionPickupTestRig {
     final Source<TargetSelectionResult> selected;
     final VisionPickup pickup;
     TargetObservations2d raw;
-    VisionPickup.CaptureFeedback feedback;
+    OccupancyObservation feedback;
     DriveSignal manual = DriveSignal.zero();
     TargetSelectionResult selectionOverride;
     Runnable selectionHook;
@@ -56,7 +57,7 @@ final class VisionPickupTestRig {
                         Pose2d pose, double... fieldTargets) {
         publishPose(pose, 1.0);
         publishFrame(pose, fieldTargets);
-        feedback = VisionPickup.CaptureFeedback.observed(false, clock().nowTimestamp());
+        feedback = OccupancyObservation.observed(false, clock().nowTimestamp());
         selected = TargetSelections.fromVisibleObjects(ObservationSources.inField(
                 Source.of(clock -> raw), history.lookupSource()))
                 .freshWithinSec(selectorMaxAgeSec).choose(TargetSelectionPolicies.nearestToRobot());
@@ -81,7 +82,7 @@ final class VisionPickupTestRig {
         time.nextCycle(seconds);
         publishPose(pose, 1.0);
         publishFrame(pose, fieldTargets);
-        feedback = VisionPickup.CaptureFeedback.observed(false, clock().nowTimestamp());
+        feedback = OccupancyObservation.observed(false, clock().nowTimestamp());
     }
 
     /** Publishes a synthetic current robot sample and records the real capture-time history. */

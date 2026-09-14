@@ -14,6 +14,7 @@ import edu.ftcsushi.fw.spatial.FacingTarget2d;
 import edu.ftcsushi.fw.spatial.ReferenceFrame2d;
 import edu.ftcsushi.fw.spatial.ReferencePoint2d;
 import edu.ftcsushi.fw.spatial.References;
+import edu.ftcsushi.fw.spatial.SpatialApproach2d;
 import edu.ftcsushi.fw.spatial.SpatialControlFrames;
 import edu.ftcsushi.fw.spatial.SpatialQuerySpec;
 import edu.ftcsushi.fw.spatial.SpatialSolveSet;
@@ -66,6 +67,11 @@ import edu.ftcsushi.fw.spatial.TranslationTarget2d;
  *
  * <p>This reference-first API describes targets as semantic points or frames. The evaluation layer
  * uses the explicitly selected evidence authority; it never blends or switches pose sources.</p>
+ *
+ * <p>Use {@code approach(SpatialApproach2d.facePoint(point, robotToTool, standOffInches))} for
+ * coupled tool-facing and stand-off translation. It answers both targets and frames once and
+ * proceeds directly to evidence selection. An explicitly authored frame heading remains a
+ * different target relationship, not an alternative spelling for this point approach.</p>
  */
 public final class DriveGuidance {
 
@@ -161,6 +167,12 @@ public final class DriveGuidance {
      */
     public interface SpecBuilder0 {
         /**
+         * Chooses both targets and their control frames from one coupled point approach.
+         * It cannot be mixed with separate target/frame answers through retained stages.
+         */
+        SpecApproachStage approach(SpatialApproach2d approach);
+
+        /**
          * Begins configuring the translation target.
          */
         TranslateToBuilder<SpecBuilder1> translateTo();
@@ -169,6 +181,12 @@ public final class DriveGuidance {
          * Begins configuring the facing target.
          */
         FaceToBuilder<SpecBuilder2> faceTo();
+    }
+
+    /** A coupled approach has answered geometry; choose one explicit evidence authority. */
+    public interface SpecApproachStage {
+        /** Begins choosing evidence without allowing a second target or tool-frame answer. */
+        ResolveModeChoice<SpecBuildStage> solveWith();
     }
 
     /**
@@ -232,6 +250,12 @@ public final class DriveGuidance {
      */
     public interface PlanBuilder0 {
         /**
+         * Chooses both targets and their control frames from one coupled point approach.
+         * It cannot be mixed with separate target/frame answers through retained stages.
+         */
+        PlanApproachStage approach(SpatialApproach2d approach);
+
+        /**
          * Begins configuring the translation target.
          */
         TranslateToBuilder<PlanBuilder1> translateTo();
@@ -240,6 +264,12 @@ public final class DriveGuidance {
          * Begins configuring the facing target.
          */
         FaceToBuilder<PlanBuilder2> faceTo();
+    }
+
+    /** A coupled approach has answered geometry; choose evidence, then optional drive tuning. */
+    public interface PlanApproachStage {
+        /** Begins choosing evidence without allowing a second target or tool-frame answer. */
+        ResolveModeChoice<PlanOptionalTuningStage> solveWith();
     }
 
     /**
@@ -462,6 +492,8 @@ public final class DriveGuidance {
     private static final class State {
         TranslationTarget2d translationTarget;
         FacingTarget2d facingTarget;
+        SpatialApproach2d approach;
+        boolean controlFramesChosen;
 
         SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
         DriveGuidancePlan.Tuning tuning = DriveGuidancePlan.Tuning.defaults();
@@ -523,7 +555,13 @@ public final class DriveGuidance {
         TranslationTarget2d spatialTranslationTarget = (s.translationTarget instanceof DriveGuidanceSpec.RobotRelativePoint)
                 ? null
                 : s.translationTarget;
-        if (spatialTranslationTarget != null && s.facingTarget != null) {
+        if (s.approach != null) {
+            spatialQuerySpec = SpatialQuerySpec.builder()
+                    .approach(s.approach)
+                    .solveWith(solveSet)
+                    .fixedAprilTagLayout(fixedAprilTagLayout)
+                    .build();
+        } else if (spatialTranslationTarget != null && s.facingTarget != null) {
             spatialQuerySpec = SpatialQuerySpec.builder()
                     .translateTo(spatialTranslationTarget)
                     .andFaceTo(s.facingTarget)
@@ -548,9 +586,9 @@ public final class DriveGuidance {
         }
 
         return new DriveGuidanceSpec(
-                s.translationTarget,
-                s.facingTarget,
-                s.controlFrames,
+                s.approach == null ? s.translationTarget : spatialQuerySpec.translationTarget,
+                s.approach == null ? s.facingTarget : spatialQuerySpec.facingTarget,
+                s.approach == null ? s.controlFrames : spatialQuerySpec.controlFrames,
                 rw,
                 spatialQuerySpec
         );
@@ -778,6 +816,27 @@ public final class DriveGuidance {
                 && References.isObservedPoint(((SpatialTargets.ReferencePointTarget) target).reference);
     }
 
+    /** Claims one complete geometry answer without sampling the borrowed reference. */
+    private static void chooseApproach(State s, SpatialApproach2d approach) {
+        if (s.approach != null || s.translationTarget != null || s.facingTarget != null || s.controlFramesChosen) {
+            throw new IllegalStateException("approach(...) cannot be mixed with earlier target or control-frame answers");
+        }
+        SpatialApproach2d value = Objects.requireNonNull(approach, "approach");
+        // Capability validation uses the same point, but all frame expansion stays in the spatial
+        // description/spec. The completed guidance spec adopts that expansion's exact fields.
+        SpatialTargets.ReferencePointTarget target = SpatialTargets.point(value.point());
+        s.translationTarget = target;
+        s.facingTarget = target;
+        s.approach = value;
+    }
+
+    /** Retained initial or frame stages cannot revise a coupled approach. */
+    private static void requireSeparateGeometry(State s) {
+        if (s.approach != null) {
+            throw new IllegalStateException("approach(...) already supplies both targets and control frames");
+        }
+    }
+
     /** Clears old builder branch answers before choosing a single new authority. */
     private static void resetSolve(State s, DriveGuidanceSpec.SolveMode mode) {
         s.solveMode = mode;
@@ -806,7 +865,9 @@ public final class DriveGuidance {
         }
 
         public final SELF controlFrames(SpatialControlFrames frames) {
+            requireSeparateGeometry(s);
             s.controlFrames = Objects.requireNonNull(frames, "frames");
+            s.controlFramesChosen = true;
             return self();
         }
 
@@ -823,13 +884,30 @@ public final class DriveGuidance {
         }
 
         @Override
+        public SpecApproachStage approach(SpatialApproach2d approach) {
+            chooseApproach(s, approach);
+            return new SpecApproach(s);
+        }
+
+        @Override
         public TranslateToBuilder<SpecBuilder1> translateTo() {
+            requireSeparateGeometry(s);
             return new TranslateToStep<SpecBuilder1>(s, new Spec1(s));
         }
 
         @Override
         public FaceToBuilder<SpecBuilder2> faceTo() {
+            requireSeparateGeometry(s);
             return new FaceToStep<SpecBuilder2>(s, new Spec2(s));
+        }
+    }
+
+    /** The description has answered geometry; this stage cannot expose competing frame setters. */
+    private static final class SpecApproach implements SpecApproachStage {
+        private final State s;
+        SpecApproach(State s) { this.s = s; }
+        @Override public ResolveModeChoice<SpecBuildStage> solveWith() {
+            return new ResolveModeChoiceStep<SpecBuildStage>(s, new SpecTerminal(s));
         }
     }
 
@@ -882,13 +960,30 @@ public final class DriveGuidance {
         }
 
         @Override
+        public PlanApproachStage approach(SpatialApproach2d approach) {
+            chooseApproach(s, approach);
+            return new PlanApproach(s);
+        }
+
+        @Override
         public TranslateToBuilder<PlanBuilder1> translateTo() {
+            requireSeparateGeometry(s);
             return new TranslateToStep<PlanBuilder1>(s, new Builder1(s));
         }
 
         @Override
         public FaceToBuilder<PlanBuilder2> faceTo() {
+            requireSeparateGeometry(s);
             return new FaceToStep<PlanBuilder2>(s, new Builder2(s));
+        }
+    }
+
+    /** Shares the spec approach path while retaining the ordinary plan's later tuning branch. */
+    private static final class PlanApproach implements PlanApproachStage {
+        private final State s;
+        PlanApproach(State s) { this.s = s; }
+        @Override public ResolveModeChoice<PlanOptionalTuningStage> solveWith() {
+            return new ResolveModeChoiceStep<PlanOptionalTuningStage>(s, new PlanTerminal(s));
         }
     }
 
@@ -949,6 +1044,7 @@ public final class DriveGuidance {
 
         @Override
         public RETURN fieldPointInches(double xInches, double yInches) {
+            requireSeparateGeometry(s);
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
@@ -958,6 +1054,7 @@ public final class DriveGuidance {
 
         @Override
         public RETURN robotRelativePointInches(double forwardInches, double leftInches) {
+            requireSeparateGeometry(s);
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
@@ -967,6 +1064,7 @@ public final class DriveGuidance {
 
         @Override
         public RETURN point(ReferencePoint2d reference) {
+            requireSeparateGeometry(s);
             if (s.translationTarget != null) {
                 throw new IllegalStateException("translateTo() target already configured; choose only one target method");
             }
@@ -987,6 +1085,7 @@ public final class DriveGuidance {
 
         @Override
         public RETURN fieldPointInches(double xInches, double yInches) {
+            requireSeparateGeometry(s);
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
@@ -996,6 +1095,7 @@ public final class DriveGuidance {
 
         @Override
         public RETURN fieldHeadingRad(double fieldHeadingRad) {
+            requireSeparateGeometry(s);
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
@@ -1005,6 +1105,7 @@ public final class DriveGuidance {
 
         @Override
         public RETURN point(ReferencePoint2d reference) {
+            requireSeparateGeometry(s);
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }
@@ -1019,6 +1120,7 @@ public final class DriveGuidance {
 
         @Override
         public RETURN frameHeading(ReferenceFrame2d reference, double headingOffsetRad) {
+            requireSeparateGeometry(s);
             if (s.facingTarget != null) {
                 throw new IllegalStateException("faceTo() target already configured; choose only one target method");
             }

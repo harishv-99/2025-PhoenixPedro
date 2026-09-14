@@ -10,6 +10,7 @@ tags:
 | Need | API |
 |---|---|
 | adapt FTC devices into typed sources | [`FtcSensors`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/ftc/FtcSensors.html>) |
+| report timestamped occupied/empty evidence without claiming capture | [`OccupancyObservation`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/OccupancyObservation.html>) |
 | retain a timestamped robot-relative target | [`TargetObservation2d`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/TargetObservation2d.html>) |
 | retain one bounded frame, including a confirmed empty scene | [`TargetObservations2d`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/TargetObservations2d.html>) |
 | select a located target by geometry | [`TargetSelections`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/TargetSelections.html>) |

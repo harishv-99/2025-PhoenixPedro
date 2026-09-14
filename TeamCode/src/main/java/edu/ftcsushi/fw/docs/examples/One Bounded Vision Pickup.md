@@ -67,10 +67,11 @@ program.drive(pickup.driveSource(), driveSink);
 `intake::setCollecting` saves the mechanism's method for later: `true` requests collection, `false`
 requests stopped intake. It must change that mechanism's intent, not bypass its Plant with a
 hardware write. The mechanism retains its own output update and physical STOP. The angle-bracket
-type `Source<VisionPickup.CaptureFeedback>` supplies timestamped sensor observations through
-`VisionPickup.CaptureFeedback.observed(occupied, timestamp)` or the explicitly missing value
-`VisionPickup.CaptureFeedback.unavailable()`. It must not echo the intake command as if that were
-sensor feedback.
+type `Source<OccupancyObservation>` supplies timestamped occupied/empty sensor readings through
+`OccupancyObservation.observed(occupied, timestamp)` or the explicitly missing value
+`OccupancyObservation.unavailable()`. It must not echo the intake command as if that were
+sensor feedback. [`OccupancyObservation`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/sensing/observation/OccupancyObservation.html>)
+reports the sensor's state; the pickup interprets a new eligible transition as capture.
 
 [`VisionPickupControls`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/robots/examples/visionpickup/VisionPickupControls.html>)
 assigns three operator meanings. Holding aim enables heading assistance while the driver's

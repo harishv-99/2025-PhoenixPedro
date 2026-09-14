@@ -21,6 +21,7 @@ import edu.ftcsushi.fw.input.binding.Bindings;
 import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.PoseTrajectoryEstimator;
+import edu.ftcsushi.fw.sensing.observation.OccupancyObservation;
 import edu.ftcsushi.fw.sensing.observation.ObservationSources;
 import edu.ftcsushi.fw.sensing.observation.TargetObservation2d;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
@@ -154,7 +155,7 @@ public final class VisionPickupSoftwareScenarioTest {
 
         // Inject a new sensor transition, while the camera can no longer see the object.
         fixture.step(0.05, new Pose2d(3, 0, 0));
-        fixture.feedback = VisionPickup.CaptureFeedback.observed(true, fixture.clock().nowTimestamp());
+        fixture.feedback = OccupancyObservation.observed(true, fixture.clock().nowTimestamp());
         task.update(fixture.clock());
         assertEquals(TaskOutcome.SUCCESS, task.getOutcome());
         assertEquals(Arrays.asList(true, false), fixture.intakeRequests);
@@ -209,7 +210,7 @@ public final class VisionPickupSoftwareScenarioTest {
         config.allowUnconfirmedCapture = true;
         Fixture fixture = new Fixture(config, Pose2d.zero(), 10, 0);
         fixture.feedbackAvailable = false;
-        fixture.feedback = VisionPickup.CaptureFeedback.unavailable();
+        fixture.feedback = OccupancyObservation.unavailable();
         Task task = fixture.enterFinal();
         fixture.step(0.51, new Pose2d(2, 0, 0));
         task.update(fixture.clock());
@@ -220,13 +221,13 @@ public final class VisionPickupSoftwareScenarioTest {
     @Test
     public void initialOccupiedMissingAndReplayedFeedbackNeverCountAsNewCapture() {
         Fixture occupied = new Fixture(configured(), Pose2d.zero(), 10, 0);
-        occupied.feedback = VisionPickup.CaptureFeedback.observed(true, occupied.clock().nowTimestamp());
+        occupied.feedback = OccupancyObservation.observed(true, occupied.clock().nowTimestamp());
         Task occupiedTask = occupied.pickup.createPickupTask(clock -> true);
         occupiedTask.start(occupied.clock());
         assertEquals(TaskOutcome.CANCELLED, occupiedTask.getOutcome());
 
         Fixture missing = new Fixture(configured(), Pose2d.zero(), 10, 0);
-        missing.feedback = VisionPickup.CaptureFeedback.unavailable();
+        missing.feedback = OccupancyObservation.unavailable();
         Task missingTask = missing.pickup.createPickupTask(clock -> true);
         missingTask.start(missing.clock());
         assertEquals(TaskOutcome.CANCELLED, missingTask.getOutcome());
@@ -235,7 +236,7 @@ public final class VisionPickupSoftwareScenarioTest {
         Task replayedTask = replayed.enterFinal();
         LoopTimestamp previous = replayed.feedback.timestamp;
         replayed.step(0.05, new Pose2d(2, 0, 0));
-        replayed.feedback = VisionPickup.CaptureFeedback.observed(true, previous);
+        replayed.feedback = OccupancyObservation.observed(true, previous);
         replayedTask.update(replayed.clock());
         assertEquals(TaskOutcome.CANCELLED, replayedTask.getOutcome());
         assertTrue(replayed.pickup.status().reason.contains("same timestamp"));
@@ -308,7 +309,7 @@ public final class VisionPickupSoftwareScenarioTest {
         Fixture traveled = new Fixture(configured(), Pose2d.zero(), 10, 0);
         Task traveledTask = traveled.enterFinal();
         traveled.step(0.05, new Pose2d(8, 0, 0));
-        traveled.feedback = VisionPickup.CaptureFeedback.observed(true, traveled.clock().nowTimestamp());
+        traveled.feedback = OccupancyObservation.observed(true, traveled.clock().nowTimestamp());
         traveledTask.update(traveled.clock());
         assertEquals(TaskOutcome.CANCELLED, traveledTask.getOutcome());
         assertTrue(traveled.pickup.status().reason.contains("travel"));
@@ -316,7 +317,7 @@ public final class VisionPickupSoftwareScenarioTest {
         Fixture corridor = new Fixture(configured(), Pose2d.zero(), 10, 0);
         Task corridorTask = corridor.enterFinal();
         corridor.step(0.05, new Pose2d(2, 2, 0));
-        corridor.feedback = VisionPickup.CaptureFeedback.observed(true, corridor.clock().nowTimestamp());
+        corridor.feedback = OccupancyObservation.observed(true, corridor.clock().nowTimestamp());
         corridorTask.update(corridor.clock());
         assertEquals(TaskOutcome.CANCELLED, corridorTask.getOutcome());
         assertTrue(corridor.pickup.status().reason.contains("corridor"));
@@ -446,7 +447,7 @@ public final class VisionPickupSoftwareScenarioTest {
         Fixture fixture = new Fixture(configured(), Pose2d.zero(), 10, 0);
         Task task = fixture.enterFinal();
         fixture.step(0.51, new Pose2d(2, 0, 0));
-        fixture.feedback = VisionPickup.CaptureFeedback.observed(true, fixture.clock().nowTimestamp());
+        fixture.feedback = OccupancyObservation.observed(true, fixture.clock().nowTimestamp());
         task.update(fixture.clock());
         assertEquals(TaskOutcome.TIMEOUT, task.getOutcome());
         assertEquals(Arrays.asList(true, false), fixture.intakeRequests);
@@ -612,7 +613,7 @@ public final class VisionPickupSoftwareScenarioTest {
         final Source<TargetSelectionResult> selected;
         final VisionPickup pickup;
         TargetObservations2d raw;
-        VisionPickup.CaptureFeedback feedback;
+        OccupancyObservation feedback;
         DriveSignal manual = DriveSignal.zero();
         boolean feedbackAvailable = true;
         Runnable selectionHook;
@@ -660,8 +661,8 @@ public final class VisionPickupSoftwareScenarioTest {
                         Double.NaN, timestamp));
             }
             raw = TargetObservations2d.fromFrame(timestamp, targets);
-            feedback = feedbackAvailable ? VisionPickup.CaptureFeedback.observed(false, timestamp)
-                    : VisionPickup.CaptureFeedback.unavailable();
+            feedback = feedbackAvailable ? OccupancyObservation.observed(false, timestamp)
+                    : OccupancyObservation.unavailable();
         }
 
         Task enterFinal() {

@@ -39,6 +39,9 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
      * runtime source from {@code build()}. It asks for the target relationship first, then the solve
      * lanes, so a query cannot be built before its required conceptual questions are answered.</p>
      *
+     * <p>{@code approach(description)} answers both channels and their tool frames together;
+     * separate target/frame answers cannot be mixed into that path.</p>
+     *
      * <p>For a reusable immutable problem description, use {@link SpatialQuerySpec#builder()} and
      * then {@link #from(SpatialQuerySpec)}.</p>
      */
@@ -51,6 +54,12 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
      */
     public interface TargetChoice {
         /**
+         * Chooses both channels and their frames from one coupled point-approach description.
+         * Additional target/frame answers through retained stages are rejected.
+         */
+        ApproachTargetStage approach(SpatialApproach2d approach);
+
+        /**
          * Starts a translation query. Add facing later with {@link TranslationTargetStage#andFaceTo(FacingTarget2d)} when both channels matter.
          */
         TranslationTargetStage translateTo(TranslationTarget2d translationTarget);
@@ -59,6 +68,15 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
          * Starts a facing query. Add translation later with {@link FacingTargetStage#andTranslateTo(TranslationTarget2d)} when both channels matter.
          */
         FacingTargetStage faceTo(FacingTarget2d facingTarget);
+    }
+
+    /** Approach geometry is complete; choose evidence and optional trusted field facts. */
+    public interface ApproachTargetStage {
+        /** Supplies trusted fixed tag geometry; the completed query snapshots it. */
+        ApproachTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
+
+        /** Supplies a non-empty solve-lane set and moves to the ordinary build stage. */
+        ReadyStage solveWith(SpatialSolveSet solveSet);
     }
 
     /**
@@ -254,6 +272,7 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
      * Staged builder for runtime {@link SpatialQuery} objects.
      */
     static final class Builder implements TargetChoice,
+            ApproachTargetStage,
             TranslationTargetStage,
             FacingTargetStage,
             BothTargetStage,
@@ -262,6 +281,12 @@ public final class SpatialQuery implements Source<SpatialQueryResult> {
 
         Builder() {
             this.specBuilder = new SpatialQuerySpec.Builder();
+        }
+
+        @Override
+        public Builder approach(SpatialApproach2d approach) {
+            specBuilder.approach(approach);
+            return this;
         }
 
         @Override
