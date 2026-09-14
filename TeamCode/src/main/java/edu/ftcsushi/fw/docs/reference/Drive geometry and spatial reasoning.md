@@ -16,6 +16,7 @@ tags:
 | ask a frame-explicit spatial question | [`SpatialQuery`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialQuery.html>) |
 | name robot, field, and other reference frames | [`References`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/References.html>) |
 | face a selected point and leave a positive tool-relative gap | [`SpatialApproach2d.facePoint(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialApproach2d.html>) |
+| calculate center-window encounters along a fixed-heading straight move, not capture or body clearance | [`ToolSweep2d.straightFrom(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ToolSweep2d.html>) — [ball example](<../examples/Tool Center Sweeps.md>) |
 | verify visible alignment before a bounded camera-only final intake | [`GuidedApproach.cameraOnly(...)`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/drive/guidance/GuidedApproach.html>) |
 | compute a robot-center destination from a located target | [`ApproachResult2d`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ApproachResult2d.html>) |
 | solve delayed robot-at-capture target feedback | [`SpatialSolveSet.builder().observedPoints()`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/SpatialSolveSet.html>) |

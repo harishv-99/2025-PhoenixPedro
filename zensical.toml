@@ -74,6 +74,7 @@ nav = [
       { "Subsystem experiments" = "docs/examples/Subsystem Experiments.md" },
       { "Remember recent ball locations" = "docs/examples/Remember Recent Field Locations.md" },
       { "Camera-only pickup" = "docs/examples/Camera-only Pickup.md" },
+      { "Check ball-center encounters" = "docs/examples/Tool Center Sweeps.md" },
       { "One bounded vision pickup" = "docs/examples/One Bounded Vision Pickup.md" },
       { "Know when aim assistance stops" = "docs/examples/When Aim Assistance Stops.md" },
       { "Timestamped adaptive collection" = "docs/examples/Timestamped Adaptive Collection.md" },

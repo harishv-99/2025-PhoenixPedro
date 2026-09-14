@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 440 690" role="img" aria-labelledby="title desc">
+  <title id="title">A center window is smaller than an intake opening</title>
+  <desc id="desc">Two illustrative top views in tool coordinates, in inches. Forward is up and
+    left is left. The physical opening is 12 inches wide, between lateral minus 6 and plus 6.
+    The inset center window is 6 inches wide, between minus 3 and plus 3, with forward bounds
+    minus 1 and plus 2. A 4-inch ball centered at the physical side plus 6 is rejected: half is
+    outside. A ball centered at the inset side plus 3 is included geometrically and leaves one
+    extra inch to the physical side. Dots are centers; circles are ball outlines. These are
+    alternative configurations, not motion samples or proof of capture or robot-body clearance.</desc>
+  <rect width="440" height="690" rx="12" fill="#ffffff"/>
+  <g font-family="sans-serif" font-size="19" fill="#162b3d">
+    <text x="18" y="32" font-size="22" font-weight="700">Test the center, not edge contact</text>
+    <text x="18" y="60">Top views; tool frame; inches</text>
+    <text x="18" y="88">+X forward ↑    +Y left ←</text>
+
+    <text x="18" y="127" font-weight="700">A. Physical-edge center: REJECT</text>
+    <text x="220" y="156" text-anchor="middle">12-inch physical opening</text>
+    <path d="M124 165 H316 M124 159 V171 M316 159 V171" fill="none" stroke="#162b3d" stroke-width="2"/>
+    <path d="M124 184 V252 M316 184 V252" fill="none" stroke="#162b3d" stroke-width="5"/>
+    <rect x="172" y="196" width="96" height="48" fill="#e2f0e8" stroke="#25614c" stroke-width="2" stroke-dasharray="5 3"/>
+    <circle cx="124" cy="212" r="32" fill="#fff0dd" fill-opacity="0.7" stroke="#925012" stroke-width="2"/>
+    <circle cx="124" cy="212" r="4" fill="#162b3d"/>
+    <path d="M214 228 H226 M220 222 V234" stroke="#162b3d" stroke-width="2"/>
+    <g text-anchor="middle" font-size="17">
+      <text x="124" y="272">+6</text><text x="172" y="272">+3</text>
+      <text x="220" y="272">0</text><text x="268" y="272">−3</text><text x="316" y="272">−6</text>
+    </g>
+    <text x="18" y="305">Center at +6: half the ball is outside.</text>
+
+    <text x="18" y="349" font-weight="700">B. Inset-boundary center: INCLUDE</text>
+    <path d="M124 382 V450 M316 382 V450" fill="none" stroke="#162b3d" stroke-width="5"/>
+    <rect x="172" y="394" width="96" height="48" fill="#e2f0e8" stroke="#25614c" stroke-width="2" stroke-dasharray="5 3"/>
+    <circle cx="172" cy="410" r="32" fill="#fff0dd" fill-opacity="0.7" stroke="#925012" stroke-width="2"/>
+    <circle cx="172" cy="410" r="4" fill="#162b3d"/>
+    <path d="M214 426 H226 M220 420 V432" stroke="#162b3d" stroke-width="2"/>
+    <path d="M172 465 H268 M172 459 V471 M268 459 V471" fill="none" stroke="#25614c" stroke-width="2"/>
+    <text x="220" y="493" text-anchor="middle">6-inch center window</text>
+    <text x="18" y="524">Center at +3: one extra inch remains.</text>
+
+    <text x="18" y="566">● Center    ○ 4-inch ball outline</text>
+    <text x="18" y="594">+ Tool origin; shaded/dashed = window</text>
+    <text x="18" y="622">Window forward bounds: −1 to +2</text>
+    <text x="18" y="653" font-size="18">Illustrative geometry, not capture evidence.</text>
+    <text x="18" y="679" font-size="18">No robot body or travel boundary shown.</text>
+  </g>
+</svg>

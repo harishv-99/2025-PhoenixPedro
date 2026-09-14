@@ -158,6 +158,26 @@ owner's lifecycle requires it.
 pre-reset result from being reused, but it does not call `SpatialQuery.reset()` or clear component
 state.
 
+## Check a center window along a straight move
+
+A tool can encounter a ball without robot center reaching the ball's position. A **center window**
+is a chosen rectangle of acceptable object-center positions relative to a fixed tool, already
+reduced for object size and tested allowances. A **sweep** moves that window along a described
+robot-center segment; an **encounter** reports where a stationary center enters and leaves it.
+
+[`ToolSweep2d`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/spatial/ToolSweep2d.html>)
+answers this pure geometry question through one staged path:
+`straightFrom(startPose).toFieldPoint(endX, endY).throughTool(robotToTool).centerWindowInches(minForward, maxForward, fullWidth)`.
+Then `encounterFieldCenter(fieldX, fieldY)` returns an immutable result. Check `hasEncounter()`
+before reading entry/exit robot travel in inches. It uses one fixed heading, not a curved or turning
+route; zero-length motion asks about the stationary window. Nothing drives or samples sensors.
+
+This is distinct from the point-facing approach below, a region's point containment, and a robot
+rectangle's corner checks at one pose. A tool-window encounter is not capture, whole-robot clearance,
+or an allowed autonomous travel area. The same geometry supports a fixed claw's center window,
+not its gripping/holding lifecycle. Start with the
+[complete ball-focused example and center-window diagram](<../examples/Tool Center Sweeps.md>).
+
 ## Control frame vs camera frame
 
 ### Face a point and stop short of it
