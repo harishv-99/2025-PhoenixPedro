@@ -266,7 +266,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 152 | RUNTIME-04 | Managed registration ownership transfer | Done | Implemented the approved existing-method ownership contract and removed six caller guards. 2,910 tests and strict docs/Javadocs pass; user approved the reviewed diff and authorized branch publication and merge to master. |
 | 153 | VISION-04 | Bounded recent field-location memory | Done | Bounded memory, typed field selection/reference, and independent lesson reviewed; 3,054 tests and strict docs/API checks pass. User approved the reviewed diff and authorized exact branch/repository/master publication on 2026-09-11. Collection remains AUTO-03. |
 | 154 | SPATIAL-03 | Bounded intake-sweep geometry | Done | ToolSweep2d center-window geometry, ball example, fixed-claw limits, and diagram reviewed. 3,156 tests and combined docs checks pass; user approved the reviewed diff and exact branch/repository/master publication on 2026-09-14. |
-| 155 | EXAMPLE-13 | Bounded multi-object collection | Proposed | Extend the maintained adaptive-collection example with robot-owned ordering, capacity, return cost, confirmation, and fallback. |
+| 155 | EXAMPLE-13 | Bounded multi-object collection | Proposed | Extend the maintained adaptive-collection example with robot-owned capacity, return cost, confirmation, fallback, and three-color accept/avoid policy using the shared collection owner. |
 | 156 | CTRL-03 | Coherent externally supplied motion setpoints | Proposed | Evaluate one position/velocity/acceleration input through the existing Plant control path, only with concrete adopter simplification. |
 | 157 | SENSOR-02 | Truthful directional range observations | Proposed | Expose directional range and available timing evidence at the sensor boundary without inventing acquisition timestamps or localization policy. |
 | 158 | LOCALIZATION-05 | Known-wall localization constraints | Proposed | Use directional range to correct only observable components, retaining timing and shared-heading evidence. |
@@ -288,19 +288,27 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 174 | PEDRO-03 | Managed bounded-motion execution and power limits | Proposed | Execute the exact checked geometry, retain reviewed power limits, and guard before the recurring follower heartbeat. |
 | 175 | VISION-07 | Capture-coherent useful-view coverage | Proposed | Publish optional camera-configuration-coherent footprints and credit whole cells from distinct accepted captures, not presumed detection completeness. |
 | 176 | AUTO-02 | Bounded automatic stop-and-look survey | Proposed | Generate finite viewpoints and checked connections; settle, observe, and report honest partial or complete modeled coverage. |
-| 177 | AUTO-03 | Capacity-aware bounded region collection | Proposed | Choose singles or short sweeps from recent evidence; coordinate capture progress, retry suppression, and finite collection limits. |
+| 177 | AUTO-03 | Capacity-aware bounded region collection | Proposed | Choose singles or short sweeps from classified recent evidence; weigh accepted pickup opportunities against unwanted contact and explicit handling cost, preserving real capacity/capture evidence and finite limits. |
+| 178 | VISION-08 | Classified floor-object evidence and multi-color webcam | Proposed | Preserve color/class evidence through one coherent webcam frame, projection, selection, and bounded memory; retain unwanted/unknown candidates without treating class as identity. |
+| 179 | VISION-09 | Verified classified Limelight observations | Proposed | Verify one actual backend/schema before adapting class evidence; preserve pipeline and capture truth. Independently gated, not a blocker for the webcam path or a reactivation of VISION-05. |
+| 180 | SPATIAL-05 | Conservative unwanted-object contact geometry | Proposed | Separate the narrow desired-pickup window from a conservative possible-contact envelope; reuse geometry where truthful and check all modeled legs without claiming ingestion or collision safety. |
 
 ### Approved bounded vision collection program (2026-09-11)
 
 The user approved the detailed plan with **"Implement the plan."** This supersedes the pending
 vision portion of the older Cuttlefish/Worlds order, not its completed work or unrelated deferrals.
-Implement one item per branch, Android Studio review, and destination-specific publication cycle:
+Implement one item per branch, Android Studio review, and destination-specific publication cycle.
+The 2026-09-14 multi-color tracker intake below inserts the missing prerequisites; each new
+public API still requires its own decision gate and approval:
 
 `VISION-06` -> `VISION-04` -> `DRIVE-06` -> `SPATIAL-03` -> `SPATIAL-04` -> `PEDRO-03` ->
-`VISION-07` -> `AUTO-02` -> `AUTO-03` -> `EXAMPLE-13`, then resume `CTRL-03`, `SENSOR-02`,
+`VISION-08` -> `VISION-07` -> `AUTO-02` -> `SPATIAL-05` -> `AUTO-03` -> `EXAMPLE-13`,
+then resume `CTRL-03`, `SENSOR-02`,
 `LOCALIZATION-05`, and the expanded `AUDIT-02` closure. Order is not a dependency between every
 adjacent pair. SOURCE-03, VISION-05, DRIVE-04, and other recorded deferrals remain unchanged.
-The current branch implements VISION-06 only; later records retain their own decision/evidence gates.
+VISION-09 is a separately gated backend follow-up after VISION-08; it does not block webcam
+collection. SPATIAL-04 remains next, followed by PEDRO-03. Numbered inventory rows are stable
+identifiers, not permission to skip dependencies. Each item retains its own decision/evidence gates.
 
 **Approved behavior and boundaries:**
 
@@ -340,7 +348,7 @@ The current branch implements VISION-06 only; later records retain their own dec
   scan/candidate loops. Compare all affected edu.ftcsushi.robots code, not only the short OpMode.
   Keep simple examples simple; synchronize/retire superseded examples without production-application dependency.
 - AUDIT-02 additionally requires terminal dispositions for VISION-06, DRIVE-06, SPATIAL-04,
-  PEDRO-03, VISION-07, AUTO-02, and AUTO-03. Preserve its pinned comparison sources, original
+  PEDRO-03, VISION-08, VISION-07, AUTO-02, SPATIAL-05, and AUTO-03. Preserve its pinned comparison sources, original
   capability classification, and explicit exclusion of predictive/physical-identity tracking.
 
 ### VISION-06 - Parallel reference selection and evidence
@@ -740,7 +748,8 @@ The current branch implements VISION-06 only; later records retain their own dec
 
 ### VISION-07 - Capture-coherent useful-view coverage
 
-- **Status:** Proposed; reuse VISION-03/SPATIAL-02 camera/projection boundaries.
+- **Status:** Proposed; reuse VISION-03/SPATIAL-02 camera/projection boundaries and VISION-08's
+  classified-frame processing context for requested multi-color coverage.
 - Attach optional immutable view context to the existing published object frame: source/config
   generation, conservative convex robot-frame footprint, height/range and mount/calibration
   assumptions. Both Webcam and Limelight publish/validate the same contract; explicit reviewed
@@ -751,6 +760,11 @@ The current branch implements VISION-06 only; later records retain their own dec
   invalidates coverage. Retain per-cell original times; no visibility, absence, or inventory proof.
 - Test offset/rotated footprints, boundary cells, reset/config mismatch, duplicate/empty frames,
   missing pose history and actual-versus-requested viewing poses; no second camera owner.
+- For a color-aware survey, retain which requested class configuration actually processed each
+  capture. Disabled, failed, missing, ambiguous, or overflowed class processing is not an empty
+  observation of that class. Geometric view coverage cannot prove color-specific absence or
+  that every ball was detected. VISION-09's unavailable classified backend must stay explicit;
+  it cannot inherit webcam classification readiness merely by sharing view geometry.
 
 ### AUTO-02 - Bounded automatic stop-and-look survey
 
@@ -772,7 +786,8 @@ The current branch implements VISION-06 only; later records retain their own dec
 
 ### AUTO-03 - Capacity-aware bounded region collection
 
-- **Status:** Proposed; depends on VISION-04, DRIVE-06, SPATIAL-03/04, AUTO-02 and motion edge.
+- **Status:** Proposed; depends on VISION-04, VISION-08, DRIVE-06, SPATIAL-03/04/05, AUTO-02
+  and motion edge. VISION-09 is required only for adopting its classified Limelight path.
 - Keep fresh inventory occupancy/capacity distinct from timestamped monotonic confirmed-capture
   progress. A one-slot switch adapter requires a fresh empty-to-occupied transition; continuously
   high occupancy or internal inventory transfer is not repeated capture evidence.
@@ -787,16 +802,202 @@ The current branch implements VISION-06 only; later records retain their own dec
   passes, child attempts, consecutive no-progress and attempts per neighborhood. Spatial local
   point/corridor suppression survives memory-key churn but never deletes shared evidence.
 - Capture events during a sweep do not identify specific removed entries. Normal partial finish
-  with confirmed captures is SUCCESS with reason; no-capture policy finish is UNKNOWN; already
-  full is successful no-op; hard deadline TIMEOUT; cancellation/required-evidence loss CANCELLED;
-  exceptions propagate after cleanup. Retain partial progress and exact child failures.
+  with confirmed progress satisfying the explicitly declared collection goal is SUCCESS with
+  reason; no qualifying-progress policy finish is UNKNOWN. For the original unrestricted goal,
+  generic confirmed captures qualify; an accepted-class goal instead needs actual accepted-class
+  progress evidence, not an intended target or untyped occupancy transition. Already full remains
+  a successful no-op describing no collection work needed, not a claim about inventory colors;
+  hard deadline TIMEOUT; cancellation/required-evidence loss CANCELLED; exceptions propagate after
+  cleanup. Retain partial goal progress separately from all physical captures and exact child failures.
 - Return/score/park remains enclosing Auto behavior. Optional return reservation checks cost and
   geometry only. Test capacity changes, stale/reset feedback, no-progress loops, ambiguous targets,
   partial survey admission, deadline/cancel/failure precedence, and truthful driver status/pulses.
+- **Multi-color policy amendment (2026-09-14):** the same planner consumes robot-authored accepted
+  classes plus explicit unwanted/unknown-contact policy. The example maps red alliance to red
+  and yellow, blue alliance to blue and yellow; the framework has no season-specific color or
+  alliance rule. Retain all relevant classes for risk assessment; only accepted-class encounter
+  opportunities contribute to capacity-capped benefit. Filtering destinations alone is insufficient:
+  an allowed destination can have an unwanted ball along its approach or sweep.
+  Apply SPATIAL-05 possible-contact checks separately from SPATIAL-03 desired-pickup checks and
+  SPATIAL-04 territory checks, across modeled staging, collection, repositioning, turn, and any
+  reserved return legs. Unsupported/unobserved conditions cannot be silently certified clear.
+- **Admission/cost decision gate:** compare strict rejection of known-unwanted contact with an
+  explicit optional finite handling/ejection-time penalty when robot rules permit incidental
+  pickup. The ordinary conservative choice rejects unwanted and unresolved contact risks;
+  any permissive policy must be named, deliberate, and supplied by the robot, with no hidden
+  precedence, zero cost for missing estimates, or geometric quality treated as a probability.
+  One available slot chooses the shortest feasible accepted single after hard filters under the
+  original strict policy; a deliberately costed policy compares total estimated time including
+  handling. Multiple slots retain the existing bounded benefit/time ranking rather than introduce
+  a second optimizer. A cost estimate never commands an ejector or authorizes a forbidden action.
+  Feasibility also accounts for transient slot demand in encounter order: an unwanted ball
+  reached before the desired one can consume the last slot. Reserve capacity conservatively or
+  reject the candidate unless a separately supported mechanism-owned handling/confirmation
+  contract permits releasing it at the appropriate boundary. A finite time penalty alone cannot
+  make that candidate feasible or assume the intake stayed available during ejection.
+- **Live evidence and inventory:** execute exactly the admitted motion legs. Recheck original
+  observation/class freshness, policy/profile generation, coordinate generation, and actual
+  inventory at an explicit boundary before motion; conflicting new evidence requires bounded
+  stop/revalidation/replanning, not silent steering of a frozen route. Unknown, stale, evicted,
+  partial, or overflowed observations do not prove clear space. All physically occupied slots
+  count, including unwanted or unclassified objects. A planned accepted encounter cannot prove
+  an accepted-color capture; untyped occupancy proves neither color nor correct-ball progress.
+  An ejection-time estimate cannot prove that a slot is free. Actual capture, object class,
+  occupancy, and ejection confirmation retain their separate mechanism-owned evidence. Preserve
+  anonymous geometric opportunities versus sensor-confirmed progress; add no automatic ejection
+  lifecycle or universal inventory classifier in this task.
+  At Gate 1, define generic capture progress versus accepted-class goal progress and their
+  respective evidence sources explicitly. Wrong-color-only or unclassified captures cannot
+  satisfy an accepted-class goal's SUCCESS or reset its no-progress/retry limits. Missing class
+  confirmation preserves the physical occupancy change but leaves goal progress unproven;
+  report UNKNOWN at a normal no-progress finish or the exact deadline/cancellation/failure.
+  Do not force a color sensor onto unrestricted single-color consumers, and do not fabricate a
+  classifier for a robot that lacks such evidence.
+- **Added acceptance scenarios:** swap alliances; accepted red/yellow and blue/yellow scenes;
+  nearby accepted clusters crossed by an unwanted or unknown ball; one-slot mixed clusters;
+  a longer candidate winning when the shorter one has an explicitly priced handling delay;
+  wrong-color centers outside the pickup window but inside the risk envelope; missing cost,
+  stale/conflicting labels, overflow or missing class processing, changes after plan freeze,
+  unexpected actual occupancy, wrong/unknown-only captures under an accepted-class goal,
+  one free slot with an unwanted ball encountered first, and alleged ejection without
+  sensor-confirmed freed capacity.
+  Keep all candidate/work/time bounds, cancellation/failure guarantees, and exact status reasons.
 
 All items synchronize exact APIs, Javadocs, optional guides, and independent examples. Teach the
 robot problem before new terms; keep introductory navigation compact. Hardware examples remain
 disabled pending adopting-robot camera/footprint/intake/localization/power/clearance/STOP validation.
+
+### Multi-color collection tracker intake (2026-09-14)
+
+- **Request / authority:** after reviewing SPATIAL-03, the user requested tracker items for red,
+  blue, and shared yellow balls, including avoiding unwanted pickup because ejection costs time.
+  This is a tracker-only addition: new items are **Proposed**, not implemented or API-approved.
+  It does not expand the already-reviewed SPATIAL-03 diff. Changes are isolated on
+  `codex/multicolor-collection-tracker`, based on merged `origin/master` `40cee4d` (PR #171).
+- **Why these items are needed:** `FtcFloorObjectVision.Config` currently supplies one webcam
+  color range; `FtcColorBlobProcessor` publishes rays without per-object class. The Limelight
+  floor-object adapter consumes one configured color pipeline and also publishes unlabeled
+  geometry. `TargetObservation2d` has no class field; `targetId` is explicitly stable identity,
+  not color/class. `FieldTargetMemory` retains these observations, not missing classifications.
+  `ToolSweep2d` supplies a useful desired-center encounter calculation but no contact-risk or
+  alliance policy. These are confirmed framework gaps, not a claim about every vendor's hardware.
+- **Decomposition / simplicity:** VISION-08 owns one coherent classified evidence path and its
+  bounded multi-color webcam producer. VISION-09 independently gates a concrete Limelight adapter.
+  SPATIAL-05 owns distinct possible-contact geometry; existing AUTO-03 owns reusable candidate
+  enumeration/admission/ranking and EXAMPLE-13 supplies a complete independent caller. Do not add
+  another planner, camera owner, clock, generic taxonomy registry, or example-local search loop.
+  Preserve the simple single-color use-case and explain each new answer at its point of use.
+- **Order and audit boundary:** keep SPATIAL-04/PEDRO-03 next; put VISION-08 before color-aware
+  VISION-07/AUTO-02 and SPATIAL-05 before AUTO-03. VISION-09 is independently gated and may remain
+  explicitly unavailable/deferred without blocking the webcam example. VISION-05's learned-model
+  evidence gate and other deferrals stay unchanged. These are user-requested additions, not new
+  claims attributed to the frozen Cuttlefish/Worlds sources; AUDIT-02 retains its fifteen rows
+  and records the actual supported or evidence-gated backend when assessing collection.
+- **Review boundary:** inspect these three entries and the VISION-07, AUTO-03, EXAMPLE-13, and
+  audit dependency amendments as one tracker-only diff. No production code, normative guide,
+  enabled hardware, or newly selected detector/model is changed. On 2026-09-14 the user approved
+  the tracker changes and local commit, then explicitly authorized merging to `master` as well;
+  publication follows the previously presented branch/repository pull-request workflow below.
+- **Tracker-only status / review evidence:** **Done** (task definitions reviewed and publication
+  authorized); the new implementation tasks remain **Proposed**, not implemented or API-approved.
+  The intake passed all **61 DocumentationLinksTest tests**, with zero
+  failures/errors/skips; primary inventory validation found **180 unique task
+  IDs** and exactly one detail heading for each new ID. Independent review identified and closed
+  the accepted-class goal-progress and transient-capacity gaps in AUTO-03; their explicit rules
+  and acceptance scenarios are now included. `git diff --check` and the tracker-wide trailing-
+  whitespace/control-character scan pass. This is task-definition evidence, not implementation
+  or hardware validation. Recheck documentation integrity after this final review record.
+  Review/publication coordinates: `codex/multicolor-collection-tracker` ->
+  `https://github.com/harishv-99/2025-PhoenixPedro.git` -> `master`. Only this tracker is changed;
+  commit, push, pull request, and merge are authorized for this reviewed tracker-only diff.
+  Git and the pull request record the publication result; no implementation task starts here.
+
+### VISION-08 - Classified floor-object evidence and multi-color webcam
+
+- **Status:** **Proposed**; builds on VISION-03/04/06 and SPATIAL-02. No learned model required.
+- **Decision gate:** compare existing custom-processor seams/local adapters, metadata-only support,
+  and one coherent classified observation path with a complete multi-color webcam consumer.
+  Audit every supported observation/frame construction path, projection/selection/reference and
+  memory caller. Choose the smallest reusable representation; keep one ordinary construction
+  path and migrate current callers/docs together rather than publish parallel labeled/unlabeled
+  frameworks. Class answers which category was observed, never which physical ball it was.
+- **Evidence contract:** preserve producer-supported class and its original evidence through
+  located observations, capture-time field projection, selection diagnostics, and recent memory.
+  Classification is separate from `targetId`, memory keys, position, and geometry quality.
+  Unknown/conflicting/unavailable classification stays explicit; do not invent a confidence
+  score or use detector quality as class probability. A newer position without a new class
+  observation cannot refresh an older class assertion's age. Define conservative association
+  across label changes without appearance matching, velocity tracking, or physical identity.
+- **Webcam ownership/coherence:** configure a bounded set of named color ranges under the
+  existing webcam lane's one portal, mount, lifecycle, and LoopClock. Publish all requested
+  classes from one actual capture, preserving per-class processing status/configuration; do not
+  merge successive exposures into one apparent frame or hide missing work as empty results.
+  Resolve overlapping masks/candidate conflicts explicitly instead of counting one location
+  twice. Retain unwanted/unknown candidates for risk policy. Bound total work, observations,
+  and retained memory; expose overflow and partial processing rather than imply complete inventory.
+- **Acceptance:** same-frame red/yellow/blue fixtures; absent detections versus disabled/failed
+  class processing; overlapping ranges, ambiguous/touching detections, unknown/conflicting labels,
+  total count/work limits, original timestamps and reset/config generations, projection metadata
+  preservation, memory association with label changes, no double counting or fabricated age,
+  shared ownership/partial-construction cleanup, and migrated single-color callers. Tests prove
+  software evidence handling, not actual distinct balls, color accuracy, or center estimates.
+- **Teaching / physical gate:** one optional concept-first example explains color/class versus
+  identity, all-color retention, and unknown evidence before code. Use robot-owned labels and
+  actual range configuration, not alliance rules in core. Thresholds, touching/occluded objects,
+  class confusion, center projection, latency, and sustainable multi-processor throughput require
+  representative adopting-robot measurements; do not borrow another team's accuracy claim.
+
+### VISION-09 - Verified classified Limelight observations
+
+- **Status:** **Proposed**; depends on VISION-08's evidence contract. Independently gated backend
+  support, not a mandatory prerequisite for the webcam collection path.
+- **Evidence / decision gate:** select and verify an actual supported hardware/firmware/FTC SDK
+  stack, result schema, class naming, target-point convention, original capture timing, and
+  bounded output path. Current color/Retro angles and the raw detector/classifier accessors are
+  not proof of a maintained per-object multi-color adapter. Compare a truthful existing native
+  output adapter with no-adapter/deferred support; do not infer color from a pipeline index.
+- **Bounded implementation if supported:** map only actual per-candidate class/location evidence
+  into VISION-08 through the existing owner. Retain unknown/malformed/missing output distinctions,
+  timestamp/pipeline request generations, bounded counts, and verified field projection. No
+  read-time pipeline switch, second camera owner, or merging sequential color pipelines as
+  simultaneous observations. State AprilTag/classified-object coexistence only as verified for
+  the selected backend; unsupported combinations remain unavailable with an actionable reason.
+- **Acceptance / deferral:** use real schema fixtures for mixed/unknown labels, empty versus
+  missing results, malformed classes, count overflow, repeated/out-of-order captures, wrong or
+  pending pipeline, resets, and metadata preservation. Missing device/schema/target-point evidence
+  holds this task at its evidence gate or supports a recorded no-adapter disposition. Physical
+  accuracy and throughput need independent measurements. If the viable path requires a learned
+  model, use VISION-05's existing licensing/data/model/latency reactivation gate; do not silently
+  choose, train, copy, or enable a model here.
+
+### SPATIAL-05 - Conservative unwanted-object contact geometry
+
+- **Status:** **Proposed**; depends on SPATIAL-03 and coordinates with SPATIAL-04/PEDRO-03 for
+  the exact modeled motion legs. Supplies geometry to AUTO-03, not another collection strategy.
+- **Confirmed distinction:** SPATIAL-03's narrow already-inset center window identifies desirable
+  pickup alignment. A ball center outside it can still contact the intake or be pulled in.
+  Possible unwanted physical contact/interference is therefore the conservative risk being
+  modeled, not a probability of ingestion. Check object centers against a separately authored
+  possible-contact envelope accounting explicitly for relevant tool shape, object size, and
+  uncertainty; no hidden double radius adjustment or claim that a missed pickup is contact-free.
+- **Decision gate / reuse:** compare reusing the existing analytic geometry behind two explicitly
+  named roles with the smallest geometry extension. Do not silently broaden `centerWindowInches`
+  from acceptable-center semantics or copy its clipper. Define frame/units, finite size/allowance
+  rules, tangency, stationary/reverse motion, fixed mount/heading, unknown-size behavior, and
+  invalid arithmetic. Robot authors supply reviewed physical geometry; core has no ball colors,
+  alliance rules, ejection policy, or automatic collision response.
+- **Whole-plan scope:** a clear final sweep does not certify the approach, repositioning, in-place
+  turn, or optional reserved return. Give each supported leg a conservative contact envelope or
+  reject unsupported geometry explicitly. Intake-off alone cannot prove no contact with a ball.
+  Keep allowed autonomous territory and whole-robot static bounds in SPATIAL-04/PEDRO-03; do not
+  add arbitrary detours, dynamic robot avoidance, contact physics, moving tools, or unseen-object
+  guarantees. Any assumption about motion/shape needing physical evidence keeps its own gate.
+- **Acceptance / teaching:** independently derive cases inside desired pickup, outside pickup
+  but inside contact risk, and outside both; include risk tangency, object sizes, offsets,
+  rotations/turn bounds, start/end/reverse/zero legs, unknown size, non-finite/extreme math, and
+  near-wall cases that do not imply body clearance. Explain the two roles with a labeled spatial
+  diagram and text equivalent before configuration; update exact Javadocs, optional guide,
+  complete consumer, and tests together. A mathematical risk miss is not verified free space.
 
 ### Diagnostic follow-up intake (approved 2026-09-08)
 
@@ -35755,6 +35956,11 @@ verification is claimed for this tracker-only design gate.
   `master`. Manual review is accepted; no independent physical or browser run is inferred from it.
   Their additional request authorizes a separate tracker-only multi-color follow-up intake, not
   additional implementation in this reviewed diff or beginning SPATIAL-04.
+- **Publication confirmed:** reviewed commit `5391083a338574b4a0c6652452ebcd255a90653a` was pushed
+  on the authorized item branch and merged by [PR #171](https://github.com/harishv-99/2025-PhoenixPedro/pull/171)
+  into `master` as `40cee4d3173370896772e06945db5fab085a279b`. Both required hosted checks passed.
+  The merge tree equals the reviewed commit tree; local `master` was fast-forwarded to the same
+  merge without rewriting history. The later multi-color tracker intake is a separate branch.
 
 ### EXAMPLE-13 - Bounded multi-object collection
 
@@ -35783,8 +35989,21 @@ verification is claimed for this tracker-only design gate.
   STOP. Enforce hard candidate/work limits; failed route construction leaves the follower
   untouched. Include wall/corner rejection when permissions/clearance are absent. Teach one
   optional outcome with a complete independent source graph and visible illustrative values.
+- **Multi-color extension (2026-09-14):** use VISION-08 classified webcam evidence and
+  SPATIAL-05 possible-contact checks through AUTO-03's one owner. The independent robot profile
+  maps red alliance to red/yellow and blue alliance to blue/yellow; camera processing retains all
+  three colors plus explicit unknowns. Show a valid target with an invalid intervening unwanted
+  ball, the larger contact envelope, capacity-sensitive candidate choice, and strict avoidance
+  versus deliberately configured handling-time costs when permitted. Do not add an example-local
+  candidate/ranking loop or infer desired-color captures/free slots from vision plans or ejection
+  estimates. Keep current inventory and classified capture evidence distinct in status.
+  Include complete immutable configuration, ordinary managed wiring, actionable rejection reasons,
+  and deterministic three-color scenarios. Explain class versus identity, desired pickup versus
+  possible contact, and estimated cost versus observed outcome before their first use; keep the
+  lesson optional and hardware motion disabled pending real validation. Limelight is an optional
+  verified VISION-09 adoption, not a reason to hold the webcam lesson behind missing vendor data.
 - **Dependencies / completion / deferral:** follow the terminal dispositions of the approved
-  VISION-06 through AUTO-03 program (including VISION-04 and SPATIAL-03) and
+  VISION-06 through AUTO-03 program (including VISION-04, VISION-08, SPATIAL-03, and SPATIAL-05) and
   reuse completed EXAMPLE-10, AUTO-01, route, inventory, and relevant EXAMPLE-12 behavior. This task
   may consume a recent cluster snapshot or bounded location memory, not velocity predictions or
   claimed physical IDs. Retained candidate locations are not confirmed current inventory, and
@@ -35903,10 +36122,16 @@ verification is claimed for this tracker-only design gate.
   Do not enlarge or repeat AUDIT-01, add teams, or rank source quality from awards alone.
 - **Start condition:** the original robustness queue and AUDIT-01 have terminal dispositions, then
   MATH-02, TASK-07, RUNTIME-04, DRIVE-05, VISION-06, VISION-04, DRIVE-06, SPATIAL-03, SPATIAL-04,
-  PEDRO-03, VISION-07, AUTO-02, AUTO-03, EXAMPLE-13, CTRL-03, SENSOR-02, and LOCALIZATION-05
+  PEDRO-03, VISION-08, VISION-07, AUTO-02, SPATIAL-05, AUTO-03, EXAMPLE-13, CTRL-03,
+  SENSOR-02, and LOCALIZATION-05
   each reach **Done** (including approved, recorded, verified no-change) or
   evidence-backed **Deferred** with a concrete trigger. VISION-05 and DRIVE-04 must have current
   explicit dispositions; their missing model/hardware evidence does not block closure.
+- **Multi-color follow-up boundary (2026-09-14):** VISION-08/SPATIAL-05 are added dependencies
+  of the amended collection example, not additional frozen benchmark rows or new claims about
+  competition robots. Record VISION-09's implemented, unavailable, or evidence-gated backend
+  disposition; its unresolved optional hardware/model choice does not block the webcam path
+  or this audit. Preserve the original fifteen capability rows and pinned source evidence.
 - **Required result:** classify every frozen row as implemented, already supported, robot-owned,
   deliberately rejected, or evidence-gated. Link each supported claim to its exact current API,
   independent compiling example, and deterministic evidence; link every rejection/deferral to
@@ -35950,6 +36175,9 @@ verification is claimed for this tracker-only design gate.
   performance only within its measured envelope. No accuracy value is imported as a Sushi promise.
 - **Dependencies and boundary:** reuse VISION-03/SPATIAL-02 and VISION-04 only when useful; no earlier
   task waits for this model choice. AUDIT-02 can close with this exact evidence-backed deferral.
+  VISION-08's named webcam color ranges do not reactivate this learned-detector task. If VISION-09
+  needs a learned model, it must satisfy this same reactivation gate rather than bypass or copy it;
+  the webcam collection path remains independent of that optional choice.
 
 ### DRIVE-04 - Range-based approach-speed limiting
 
