@@ -23,6 +23,10 @@ import edu.ftcsushi.fw.field.TagLayouts;
  * when you want to create multiple independent runtime queries with the same immutable
  * description. If supplied, the fixed tag layout is validated and snapshotted when
  * {@code build()} completes.</p>
+ *
+ * <p>{@code approach(description)} answers both targets and their rigid control frames together.
+ * It is the coupled point-facing path; separate authored points/headings and dynamic control
+ * frames retain their existing explicit target stages.</p>
  */
 public final class SpatialQuerySpec {
 
@@ -69,6 +73,13 @@ public final class SpatialQuerySpec {
      */
     public interface TargetChoice {
         /**
+         * Chooses a coupled tool-relative point approach. The description supplies both targets
+         * and their frames; additional target/frame answers, including through retained earlier
+         * stages, are rejected. Evidence and optional fixed layout remain explicit.
+         */
+        ApproachTargetStage approach(SpatialApproach2d approach);
+
+        /**
          * Starts a translation query. Add facing later with {@link TranslationTargetStage#andFaceTo(FacingTarget2d)} when both channels matter.
          */
         TranslationTargetStage translateTo(TranslationTarget2d translationTarget);
@@ -77,6 +88,15 @@ public final class SpatialQuerySpec {
          * Starts a facing query. Add translation later with {@link FacingTargetStage#andTranslateTo(TranslationTarget2d)} when both channels matter.
          */
         FacingTargetStage faceTo(FacingTarget2d facingTarget);
+    }
+
+    /** A complete approach geometry answer; only evidence and optional field facts remain. */
+    public interface ApproachTargetStage {
+        /** Supplies trusted fixed tag geometry; the completed spec snapshots it. */
+        ApproachTargetStage fixedAprilTagLayout(TagLayout fixedAprilTagLayout);
+
+        /** Supplies the non-empty solve-lane set and moves to the ordinary build stage. */
+        ReadyStage solveWith(SpatialSolveSet solveSet);
     }
 
     /**
@@ -187,6 +207,7 @@ public final class SpatialQuerySpec {
      * {@link #builder()} rather than this concrete class.
      */
     static final class Builder implements TargetChoice,
+            ApproachTargetStage,
             TranslationTargetStage,
             FacingTargetStage,
             BothTargetStage,
@@ -196,39 +217,68 @@ public final class SpatialQuerySpec {
         private SpatialControlFrames controlFrames = SpatialControlFrames.robotCenter();
         private SpatialSolveSet solveSet;
         private TagLayout fixedAprilTagLayout;
+        private boolean approachChosen;
+        private boolean controlFramesChosen;
 
         Builder() {
             // staged builder; use SpatialQuerySpec.builder()
         }
 
         @Override
+        public Builder approach(SpatialApproach2d approach) {
+            if (approachChosen || translationTarget != null || facingTarget != null || controlFramesChosen) {
+                throw new IllegalStateException("approach(...) cannot be mixed with earlier target or control-frame answers");
+            }
+            SpatialApproach2d value = Objects.requireNonNull(approach, "approach");
+            SpatialTargets.ReferencePointTarget target = SpatialTargets.point(value.point());
+            translationTarget = target;
+            facingTarget = target;
+            controlFrames = value.controlFrames();
+            approachChosen = true;
+            return this;
+        }
+
+        @Override
         public Builder translateTo(TranslationTarget2d translationTarget) {
+            requireSeparateTargetAnswer();
             this.translationTarget = Objects.requireNonNull(translationTarget, "translationTarget");
             return this;
         }
 
         @Override
         public Builder faceTo(FacingTarget2d facingTarget) {
+            requireSeparateTargetAnswer();
             this.facingTarget = Objects.requireNonNull(facingTarget, "facingTarget");
             return this;
         }
 
         @Override
         public Builder andFaceTo(FacingTarget2d facingTarget) {
+            requireSeparateTargetAnswer();
             this.facingTarget = Objects.requireNonNull(facingTarget, "facingTarget");
             return this;
         }
 
         @Override
         public Builder andTranslateTo(TranslationTarget2d translationTarget) {
+            requireSeparateTargetAnswer();
             this.translationTarget = Objects.requireNonNull(translationTarget, "translationTarget");
             return this;
         }
 
         @Override
         public Builder controlFrames(SpatialControlFrames controlFrames) {
+            requireSeparateTargetAnswer();
             this.controlFrames = Objects.requireNonNull(controlFrames, "controlFrames");
+            controlFramesChosen = true;
             return this;
+        }
+
+        /** Protects the coupled description even when an earlier stage reference was retained. */
+        private void requireSeparateTargetAnswer() {
+            if (approachChosen) {
+                throw new IllegalStateException("approach(...) already supplies both targets and control frames");
+            }
         }
 
         @Override

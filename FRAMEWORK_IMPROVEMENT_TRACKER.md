@@ -283,7 +283,7 @@ adjacent cleanup unless it is required to keep the repository compiling and docu
 | 169 | DOC-22 | Align capability guidance with outcome-aware sequences | Proposed | Correct the confirmed stale sequence-success explanation; teach deliberate completion continuation separately from ordinary success gating, without adding robot guards or changing Task behavior. |
 | 170 | DRIVE-05 | Unified target selection and guidance/localization boundary | Done | Explicit field-pose/direct-tag guidance, parallel observed/pose-based tag selection, caller migration, and independent example implemented. Automated checks pass; user approved the reviewed diff and authorized publication to master on 2026-09-10. |
 | 171 | VISION-06 | Parallel reference selection and evidence | Done | Reviewed compact selection factories, common spatial/guidance provenance, migrated callers/docs, and 2,990 passing tests; user authorized the exact branch/repository/master publication on 2026-09-11. |
-| 172 | DRIVE-06 | Shared point approach and verified camera-only pickup | Proposed | Share tool-relative point approaches; require fresh close alignment before a bounded camera-unseen final intake, with independent capture confirmation. |
+| 172 | DRIVE-06 | Shared point approach and verified camera-only pickup | Done | Shared approaches, camera-only pickup, occupancy evidence, and disabled independent example implemented. All 3,120 tests and documentation artifact checks pass; user approved Android Studio review and exact branch/repository/master publication on 2026-09-14. |
 | 173 | SPATIAL-04 | Whole-motion static travel bounds | Proposed | Check complete fixed-heading translations and conservative in-place turns against allowed/forbidden rectangles; no collision-safety claim. |
 | 174 | PEDRO-03 | Managed bounded-motion execution and power limits | Proposed | Execute the exact checked geometry, retain reviewed power limits, and guard before the recurring follower heartbeat. |
 | 175 | VISION-07 | Capture-coherent useful-view coverage | Proposed | Publish optional camera-configuration-coherent footprints and credit whole cells from distinct accepted captures, not presumed detection completeness. |
@@ -434,19 +434,277 @@ The current branch implements VISION-06 only; later records retain their own dec
 
 ### DRIVE-06 - Shared point approach and verified camera-only pickup
 
-- **Status:** Proposed; depends on VISION-06. Preserve the approved concept and complete its local
-  caller/lifecycle decision gate before code.
-- Add SpatialApproach2d.facePoint(point, robotToTool, positiveStandOff) directly consumable by
-  spatial query/spec and guidance; retain oriented-frame approaches for authored headings.
-  Expand to tool-relative facing and stand-off translation with the tool offset applied once.
-- GuidedApproach owns stable DriveSource, fresh Task factory, immutable status and cancellation.
-  Guide -> stopped verification using distinct fresh captures -> one time/command-bounded final
-  intake -> finish. Live ranking may change before verification; unique close/aligned evidence
-  authorizes the handoff while visible. Independent fresh capture is required for success/repeat.
-- Borrow guidance/intake/feedback; no camera/localizer heartbeat or hardware ownership. TeleOp uses
-  the existing one final source-driven path. Existing field/wall pickup policy remains separate.
-  Test pre-start/active/terminal cancellation, deadlines from phase entry, freshness, ambiguous
-  handoff, loss before handoff, final occlusion, and false capture prevention.
+- **Status:** Done; depends on completed VISION-06. The user's `next task` direction follows
+  VISION-04 publication in PR #169 (`e684b5a`). Decision gate completed on 2026-09-11 against local
+  `master`, synchronized with fetched `origin/master`. The user explicitly approved the DRIVE-06
+  design and implementation on 2026-09-11. Fetched `origin/master` remains `e684b5a`; implementation
+  is on `codex/drive-06-camera-only-pickup`. This approves the bounded software change, not hardware
+  motion or publication by itself. Android Studio review and the exact destination-specific
+  publication were separately approved on 2026-09-14, as recorded below.
+- **Confirmed current behavior and callers:**
+  - `SpatialQuery` / `SpatialQuerySpec` already solve translation and facing with distinct control
+    frames. `DriveGuidance` builds on those same spatial results; `plan.query()` owns controller
+    state without writing hardware. `plan.task(sink, config)` writes/stops the sink directly and
+    therefore must not be nested inside a source-driven pickup owner.
+  - `TargetSelectionSource` retains one actual frame, unselected candidates, original timestamp,
+    and freshness policy. `References.selectedTargetPoint(...)` makes its chosen point available
+    to the existing observed-point solver. `FieldTargetSelectionSource` instead means remembered
+    field evidence and cannot supply the fresh whole-frame proof needed for this handoff.
+  - `robots.examples.visionpickup.VisionPickup` is a localized, committed-destination/wall-policy
+    example, not a camera-only owner. Its `ApproachResult2d.forTarget(...)` uses an authored field
+    heading, tool offset, stand-off, and checked field envelope. Preserve that meaning and its
+    independent capture/lifecycle safeguards; do not replace it with live point-facing guidance.
+  - `TagAlignment` teaches an authored tag-frame point AND heading, `AdaptiveCollectionPaths`
+    authors band/route endpoints, and `ReferenceCoordinatedShotService` uses spatial translation
+    for mechanism/range planning. These are not duplicate point-facing approaches to migrate.
+    `RecentFieldLocations` remains the read-only memory lesson. No production-robot behavior changes.
+  - The existing nested `VisionPickup.CaptureFeedback` value is used by `VisionPickup`,
+    `VisionPickupTestRig`, `VisionPickupSoftwareScenarioTest`,
+    `VisionPickupLocalizationScenarioTest`, and `One Bounded Vision Pickup.md`. These are the
+    mechanical migration callers for the shared occupancy value below; their policy stays intact.
+- **Public construction and distinct-capability audit:**
+  - `SpatialQuery.builder()` returns `TargetChoice` and builds a runtime query;
+    `SpatialQuerySpec.builder()` returns its own `TargetChoice` and builds a reusable immutable
+    description; `SpatialQuery.from(spec)` creates independent runtime state from that description.
+    Query/spec constructors are not public. Keep these layers: description sharing and independent
+    cycle caches are distinct capabilities, not aliases for an inline beginner path.
+  - `DriveGuidance.plan()` returns `PlanBuilder0` for the ordinary executable plan;
+    `DriveGuidance.spec()` returns `SpecBuilder0` for the controller-neutral description;
+    `DriveGuidance.plan(spec)` returns `PlanFromSpecBuilder` to add/change tuning independently.
+    Plan/spec constructors are not public. Keep the spec reuse seam and existing query/overlay/Task
+    consumers. `poseLock(estimator[, tuning])` is an unrelated explicit hold capability, unchanged.
+  - Existing target factories (`SpatialTargets.point`, `fieldPoint`, `fieldHeading`, and
+    `frameHeading` with optional heading offset) retain their distinct reference/literal meanings.
+    `SpatialControlFrames.robotCenter()`, `of(...)`, and `withTranslationFrame`/`withFacingFrame`
+    accept fixed `Pose2d`, `Source<Pose2d>`, or `TimeAwareSource<Pose2d>`: fixed geometry and live
+    source forms are genuine capabilities. `SpatialSolveSet.builder()` retains its authored
+    lane order, configurable evidence bounds, and custom `add(lane)` seam. Do not add a second
+    approach expansion/solver to any of these families merely to create symmetric factories.
+  - Add one `SpatialApproach2d.facePoint(point, robotToTool, standOffInches)` factory, returning an
+    immutable description. No public constructor, equivalent `of`, or `toQuery`/`toPlan` aliases.
+    Add `approach(description)` only at the existing query/spec and guidance plan/spec target
+    entry stages. Return approach-specific stages exposing solve/layout and applicable tuning,
+    not additional targets/control frames that could contradict the description. Reject mixing an
+    approach with earlier target/frame answers and later mutation through retained earlier stage
+    references; narrowing the declared return type alone is insufficient.
+  - A point reference, tool pose, solve set, and existing `DriveGuidancePlan.Tuning` are already
+    independently stored/reused robot values. The approach description is shareable across query
+    and guidance consumers. In contrast, new verification/finalization Config wrappers would only
+    be constructed inline for one stage: use direct named stage answers instead. One staged
+    `GuidedApproach.cameraOnly(selection)` factory is sufficient; no parallel constructor/factory
+    accepting an independently assembled plan, reference, and tool configuration.
+- **Chosen shared geometry:** Both channels target the same reference point. Facing uses the
+  fixed `robotToTool`; translation uses `robotToTool.then(new Pose2d(standOffInches, 0, 0))`.
+  At completion the target is the configured positive distance along the tool's +X, with the tool
+  facing it. Validate finite rigid geometry, positive finite stand-off, and derived overflow. Apply
+  the tool offset once, centrally in the spatial description/expansion; guidance consumes that
+  expansion rather than recomputing it. Preserve actual selection kind, solve mode, and timestamps.
+  Visible objects, remembered field points, and tag-relative points use the same description with
+  their appropriate explicitly chosen solve lane. Existing oriented-frame targets remain the way
+  to request an authored heading. An approach query's translation distance is remaining approach
+  error, NOT tool-to-object range; existing range queries still measure from the actual tool origin.
+- **Ordinary call-site comparison (proposed API):**
+  - Manual expansion requires the student to repeat the point in two targets and construct the
+    facing/offset translation frames correctly. A helper exposing targets/frames still leaves that
+    assembly at each call site. The shared description answers point, tool, and stand-off once:
+
+    ```java
+    // This example's point comes from visible selection; solveSet uses observedPoints().
+    SpatialApproach2d approach = SpatialApproach2d.facePoint(point, robotToIntake, standOffInches);
+    SpatialQuery query = SpatialQuery.builder().approach(approach).solveWith(solveSet).build();
+    DriveGuidancePlan guidance = DriveGuidance.plan().approach(approach)
+            .solveWith().observedPoints(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT).build();
+    ```
+
+  - A generic Task sequence plus `guidance.task(sink, ...)` mixes direct writes with the drive
+    source and still requires robot-owned whole-frame verification, handoff, and capture state.
+    A constructor taking `guidance`, `selection`, `tool`, and final direction repeats answers and
+    permits inconsistent geometry/evidence. The chosen owner builds one matching approach/query
+    internally and asks each independent robot decision once (names are the proposed surface):
+
+    ```java
+    GuidedApproach pickup = GuidedApproach.cameraOnly(selected)
+            .throughTool(robotToIntake, standOffInches)
+            .driveTuning(tuning)
+            .verifyWithZeroCommand(settleSec, positionToleranceInches,
+                    headingToleranceRad, verificationTimeoutSec)
+            .finalIntake(intake::setCollecting, finalCommand, maxFinalSec)
+            .captureFeedback(occupancy, maxCaptureAgeSec)
+            .idleFrom(manualDrive)
+            .withinSec(maxAttemptSec);
+    Task attempt = pickup.createPickupTask(permission); // a fresh single-use Task
+    DriveSource drive = pickup.driveSource();           // the one stable drive path
+    ```
+
+    Selection answers which visible object and retains its own freshness bound; tool/stand-off
+    answer geometry; tuning answers controller response/caps; verification answers the acceptable
+    close/aligned window and time bounds; final intake answers its request and command/time cap;
+    occupancy answers independent timestamped feedback; idle answers manual versus zero fallback;
+    the overall budget and per-attempt permission bound the complete request. These are robot-owned
+    facts/policies, not defaults asserted safe for an unknown robot. No separate final heading:
+    fixed final translation follows the already configured tool +X, expressed in robot coordinates.
+- **Camera-only lifecycle and evidence contract:**
+  - The core `GuidedApproach` owns its controller query, stable `DriveSource`, immutable status,
+    and one active attempt. Reuse `AbstractTask` for single-use/active-only cancellation. The
+    existing Task runner alone advances the attempt; a robot capability/service delegates owner
+    `stop()`. The protected core must not implement FTC `RobotProgram.Service` or add another
+    camera/localizer/controller heartbeat. Read-only status and drive sampling do not advance
+    phases. No second final sink writer or borrowed hardware/source reset.
+  - Admission requires permission, fresh empty occupancy evidence, and fresh usable visible
+    positioned selection. GUIDE may follow a newly ranked target each frame. Missing/stale/partial
+    geometry withdraws motion and cancels; no additional loss-delay/reacquisition policy or hidden
+    final intake on disappearance. The overall attempt deadline bounds guide convergence.
+  - On close alignment, publish zero drive intent and enter VERIFY at its own clock boundary.
+    After the explicit settling interval, require two strictly newer qualifying whole-frame
+    captures, both captured strictly after that interval. Replayed/reconstructed same-time frames
+    never count or renew deadlines. Each must keep the selected candidate inside the same
+    tool-relative stand-off/heading window and show exactly one candidate in that window. Count
+    the full candidate frame, not just candidates surviving selection preference. Unpositioned
+    candidates prevent a uniqueness claim; multiple distinct candidates at identical coordinates
+    are still ambiguous. Fresh empty, ambiguous, incomplete, or out-of-window evidence cancels;
+    do not silently re-guide or substitute an unselected candidate during verification.
+  - Derive the close window from the one stand-off and tolerances: finite nonnegative position
+    tolerance strictly below stand-off, heading tolerance below pi/2, finite nonnegative settling
+    time, and positive verification timeout greater than settling time. Reject overflow and other
+    contradictory configuration. Two captures is a fixed protocol, not another student knob.
+    Zero commanded output plus repeated geometry is NOT proof the chassis physically stopped,
+    that detections are complete, or that the same physical ball persisted across images.
+  - FINAL is one straight, positive normalized command capped at 1, with a positive finite
+    maximum duration starting at entry. It may continue without camera visibility only after
+    verification succeeded while visible. No speed-to-distance inference, field memory, localization,
+    wall/corner clearance, obstacle avoidance, or physical capture guarantee is added here.
+  - Keep fresh empty occupancy throughout admission/GUIDE/VERIFY; occupancy before FINAL cancels
+    rather than succeeding. Success requires fresh independent empty-to-occupied feedback strictly
+    newer than both the last empty observation and FINAL entry. Reject unavailable, future,
+    wrong-clock/epoch, stale, regressing, or same-timestamp-changed feedback. Arrival, occlusion,
+    replay, or elapsed command time never means capture. Overall/final deadlines, permission loss,
+    and cancellation take precedence over capture at an exhausted boundary. Positive-duration
+    commands remain observable by the downstream output phase; never charge pre-entry `dtSec()`.
+  - Withdraw owned drive intent before cleanup. Claim intake-request cleanup immediately before
+    invoking the enabling setter, then best-effort release that request exactly once. Admission
+    rejection or GUIDE cancellation must not clear an intake request never acquired by this
+    attempt. Recheck active identity/cancellation/STOP after borrowed callbacks so reentrant
+    cancellation cannot resume later side effects. Owners still coordinate shared mechanism intent.
+  - Normal terminal completion/cancellation returns the explicitly supplied idle drive. Exceptions
+    latch failure and zero; cleanup errors must not become consumable normal cancellation. STOP
+    is terminal/idempotent; reject overlapping attempts without affecting the existing one. No
+    automatic retries or held-request banking. Missing current-cycle Task advancement cannot
+    replay a prior nonzero command; same-cycle cancellation must be visible to downstream sampling.
+    Retain phase, outcome/reason, and selection/verification/capture evidence for driver feedback,
+    including the exact final verification frame/timestamp. Historical verification is not
+    continued visibility; distinguish verified geometry, commanded intake, and sensor capture.
+    Use a fixed camera/tool configuration for an owner's lifetime; stop it before reconfiguration
+    and construct a fresh owner, rather than inventing a new view-generation subsystem here.
+- **One shared feedback value:** Extract the existing immutable nested feedback shape as
+  `fw.sensing.observation.OccupancyObservation`, with `observed(boolean, LoopTimestamp)` and
+  `unavailable()`. It reports occupied/empty evidence, not verified capture; each consumer checks
+  timestamp eligibility and interprets the transition. Remove the old nested public type and
+  mechanically migrate the enumerated callers/docs/tests in the same change. Do not create a
+  duplicate camera-only type, inventory counter, sensor hierarchy, or new old-pickup policy.
+- **Alternatives and independent review:** Documentation-only or a geometry-only helper leaves
+  the approved camera-unseen final maneuver in robot state machines. Extending the existing
+  localized/wall example mixes different contracts; replacing authored frame headings changes
+  behavior. Generic Task composition remains appropriate outside the genuinely required domain
+  phase owner, but cannot eliminate its verification/capture state. Separate verification/final
+  Config values, N-frame tuning, plan injection, motion prediction, and reacquisition modes add
+  concepts without a demonstrated need. Independent caller/construction and lifecycle audits
+  confirmed the shared geometry and query reuse; adversarial review added retained-stage guards,
+  intake-request ownership, strict occupancy transitions, and explicit no-physical-rest/distance
+  claims. The main review accepts these constraints against Framework Principles.
+- **Bounded implementation and documentation:** Add the spatial value/staged entry points, core
+  camera-only owner/status, shared occupancy value, and focused tests. Add an independent
+  `robots.examples.cameraonlypickup` open-floor teaching graph with no production-robot dependencies
+  and demonstrates capability/controls/one drive path, fresh Tasks, manual release, stop, and
+  occupancy evidence. Do not enable an untuned motion OpMode. Update Spatial Queries, Drive
+  Guidance, relevant example/vision cross-links and Javadocs together; retain the localized/wall
+  example's separate lesson. Explain each new concept before use, include a small phase/capture
+  timeline, distinguish approach error from range and commanded zero from physical rest, and
+  keep this optional material out of the initial beginner course navigation.
+- **Verification and physical boundary:** Test geometry with translated/yawed tools, tag/object/
+  remembered references and appropriate solve lanes, invalid/overflowed configuration, public
+  construction symmetry without duplicate factories, retained-stage mutation, provenance and
+  stale/missing data. Exercise pre-start/active/terminal cancellation, repeat/concurrent starts,
+  clock reset/foreign evidence, same-cycle sampling, skipped Task cycles, permission loss,
+  positive-duration observability, deadline precedence, frame replay/regression, ambiguity and
+  incomplete candidates, final occlusion, false capture, callback failures/reentrancy and STOP.
+  Keep existing localized pickup and memory regressions unchanged apart from occupancy type names.
+  Run focused tests, documentation/static checks, then the normal TeamCode unit-test/compile gate
+  with exact result counts and independent review before Android Studio handoff. No Gradle tests
+  or hardware tests are claimed by this design-only gate. Adopting robots must validate camera
+  projection/mount, visible stand-off, actual settling/slip, drive tuning, final command/duration,
+  sensor truth and known-clear operating space; the software contract does not assume those facts.
+- **Implementation and adversarial review (2026-09-11):** The approved shared description and all
+  four staged entry layers are implemented, with no new solver or redundant factory. Each accepted
+  pickup attempt owns a fresh private reference/query cache; the long-lived owner keeps the stable
+  drive source and does not advance work separately. This isolates same-cycle fresh attempts while
+  sampling the borrowed selection once per processed attempt cycle. Rejected concurrent or obsolete
+  queued attempts report `CANCELLED` on their own Task without replacing the last accepted attempt's
+  status or clearing another attempt's request. Normal cancellation permits a deliberately fresh
+  Task; owner STOP or exceptional failure remains terminal.
+  - Independent geometry review added collapsed-positive-offset rejection, retained unanswered
+    child-stage guards, and exact spatial-transform reuse for verification at large finite headings.
+    Independent lifecycle review retained first-frame freshness at handoff, validated full-frame
+    geometry even on same-time reconstructed input, and verified zero stale intent after skipped
+    Task cycles. Intake intent is acquired once at FINAL entry and released once; no repeated
+    semantic setter occurrences or release of an unowned request. Drive-source exceptions trigger
+    guarded best-effort active cleanup while retaining the original failure.
+  - The independent disabled example privately owns its camera and semantic intake Plant, borrows
+    timestamped active-low occupancy, and uses gesture-specific permission with one managed drive
+    declaration. A pre-acquisition profile check rejects duplicate trimmed drive/intake motor names;
+    detecting different configured aliases for the same physical device still needs wiring review.
+    The old localized pickup changed only its shared occupancy value type, imports, and explanation.
+  - Source and concept review covered the new example, old pickup migration, geometry/evidence
+    parallelism, supported public construction layers, and all changed guides. No later collection,
+    travel-bound, memory, motion-prediction, or production-application behavior was added.
+- **Documentation concept checklist:**
+  - `Spatial Queries.md`: optional geometry reader; point/tool/stand-off explanation precedes the
+    new construction; one example and reference/evidence mapping explain zero approach error versus
+    nonzero actual range. Authored-heading and committed-destination depth stays separate.
+  - `Drive Guidance.md`: optional drive consumer; inherits spatial prerequisites, then adds the
+    plan entry and bounded camera-only owner. Explains construction versus motion, missing evidence,
+    one source/sink, and direct versus field evidence before linking the complete example.
+  - `Vision Targets.md`: camera reader; already defines selection and frames, then routes chosen
+    points to the shared approach without inventing tag identity or refreshing remembered evidence.
+  - `Camera-only Pickup.md`: optional complete-example reader; prerequisites precede phases,
+    stand-off, occupancy, deferred setters, bindings, and managed wiring. Active values and separate
+    sensor/command evidence sit beside use; diagram and timestamped table have text equivalents.
+    A causal software checkpoint precedes the supervised physical-validation gate.
+  - `One Bounded Vision Pickup.md`: existing localized/wall reader; the same occupied/empty evidence
+    explanation now names the shared value, with no new policy or mandatory camera-only prerequisite.
+  - Examples index, the two affected quick references, and Advanced navigation provide discovery
+    only. The initial Get Started/Learn/Build course and its compact ordering remain unchanged.
+- **Automated verification (2026-09-11):** Final
+  `:TeamCode:compileDebugJavaWithJavac :TeamCode:testDebugUnitTest :TeamCode:sushiJavadocs` passed
+  in 1m 53s: **3,120 tests in 313 suites, zero failures/errors/skips**, including 66 new tests.
+  The existing localized-pickup and memory scenarios pass without policy changes. Only existing
+  Java 8 source/target-on-JDK-21 and SDK deprecation warnings were emitted. The pinned Python 3.12
+  documentation environment passed dependency checks; final `zensical build --clean --strict`
+  passed in 25.01s. Generated search verified 1,066 indexed sections across all six guide areas;
+  generated-link checks verified 258 API links and 108 maintained source links across 60 pages.
+  Changed/untracked authored files pass whitespace/control-character checks and `git diff --check`;
+  no old `CaptureFeedback` type references remain. Earlier failures were corrected fixture forward
+  references/source-lambda signatures, one residual expectation (18 - 6 - 2 = 10), and current
+  tracker wording; no production evidence assertion was removed to make tests pass.
+- **Android Studio / physical review gate:** Inspect `SpatialApproach2d`, all four builder paths,
+  `GuidedApproach` and its tests, the independent `cameraonlypickup` graph, and `Camera-only Pickup.md`.
+  Check tool offsets, visibility-to-final authorization, sensor-only success, release/override,
+  cleanup failure, shared motor-name rejection, STOP, and disabled motion defaults. The Browser
+  skill could not establish a browser connection (discovery returned no browsers), so desktop/
+  mobile and light/dark rendered inspection remains a manual review item; strict generation and
+  source review do not claim that visual check. No robot-hardware validation or camera/motion/
+  clearance/capture accuracy is claimed. Publication coordinates are
+  `codex/drive-06-camera-only-pickup` -> `https://github.com/harishv-99/2025-PhoenixPedro.git` ->
+  `master`. The combined review-and-publication authorization is recorded below; do not start the
+  next item under this approval.
+- **Manual review recorded (2026-09-14):** The user confirmed, "I am good with DRIVE-06 in Android.
+  Proceed". This first reply recorded Android Studio approval; the diff remained unstaged until
+  the subsequent combined publication authorization. Neither reply claims a physical robot run
+  or the outstanding rendered-document checks.
+- **Publication authorization (2026-09-14):** The user explicitly authorized committing the reviewed
+  DRIVE-06 diff on `codex/drive-06-camera-only-pickup`, pushing that branch to
+  `https://github.com/harishv-99/2025-PhoenixPedro.git`, opening a pull request, and merging into
+  `master`. Marked `Done` at the approved publication gate. Publish only this reviewed item; retain
+  disabled motion defaults and the adopting-robot physical-validation requirements above.
 
 ### SPATIAL-04 - Whole-motion static travel bounds
 

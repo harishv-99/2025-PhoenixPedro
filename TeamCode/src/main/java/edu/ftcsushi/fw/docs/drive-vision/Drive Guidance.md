@@ -48,6 +48,11 @@ DriveGuidance.plan()
 
 `build()` is not visible until at least one target and one solve strategy are chosen. Target choice methods such as `point(...)`, `fieldPointInches(...)`, and `frameHeading(...)` return to the parent stage immediately because they answer exactly one choice. Evidence modes receive their source directly; multi-setting branches end with `doneAbsolutePose()` or `doneRelativeAprilTags()`. The observed-point mode has one loss-policy answer and returns immediately.
 
+For the common "face this point and leave a tool-relative gap" relationship, use
+`approach(description)` instead of separately answering target and control-frame questions.
+The [shared approach description](<Spatial Queries.md#face-a-point-and-stop-short-of-it>) serves
+both spatial queries and guidance; it does not add another solver or hardware writer.
+
 ## Common TeleOp pattern: button-held omega override
 
 This example keeps driver translation from the sticks, but overrides omega while the button is held so a shooter frame faces a scoring point offset from an AprilTag.
@@ -190,8 +195,37 @@ The unchanged tuning defaults include `aimKp = 2.5`, a `1°` deadband, and a nor
 Direct observation mode is delayed visual feedback in the robot frame **at capture**, not motion
 compensation. Its age limit comes from `selected`; it accepts only observed-point targets.
 
-A complete approach also chooses where the robot center should end up. **Stand-off** is the
-remaining distance from the intake's origin to the target along intake +X. Suppose an observed ball
+To approach that point while facing it, supply the tool geometry and positive stand-off once.
+The gap is measured from the intake origin along intake +X; `standOffInches` is a reviewed robot
+configuration value, not a camera-to-ball distance:
+
+```java
+SpatialApproach2d approach = SpatialApproach2d.facePoint(point, robotToIntakeFrame, standOffInches);
+DriveGuidancePlan move = DriveGuidance.plan().approach(approach)
+        .solveWith().observedPoints(DriveGuidanceSpec.LossPolicy.ZERO_OUTPUT)
+        .build();
+```
+
+This constructs a plan only. `ZERO_OUTPUT` requests zero for missing channels; it does not prove
+arrival. The [controller defaults](<#controller-tuning>) still require physical review. The same
+`approach(...)` entry works in `DriveGuidance.spec()` when an independently reusable description
+is needed. For a remembered field point use the existing absolute-pose mode; for a tag-relative
+point explicitly choose direct-tag or absolute-pose evidence as explained above. No fallback or
+new target identity is introduced. The approach's translation error reaches zero while the
+stand-off gap remains, so do not use that error as shooter range.
+
+For one camera-only pickup, the
+[`GuidedApproach`](<https://harishv-99.github.io/2025-PhoenixPedro/api/edu/ftcsushi/fw/drive/guidance/GuidedApproach.html>)
+owner builds this matching selection/approach/query internally. It commands zero, verifies two
+new close/aligned frames after a settling interval, then permits one command/time-bounded final
+intake even if the camera loses sight. Fresh independent occupancy evidence alone can confirm
+capture. See [Camera-only pickup](<../examples/Camera-only Pickup.md>) for the complete source-driven
+owner and its open-floor limits. Do not nest `plan.task(sink, ...)` inside that path: the pickup
+supplies one stable drive source, and the managed program owns the final sink write.
+
+When the robot must approach from an **authored field heading**, compute a robot-center field
+destination instead. Stand-off still means the remaining distance from the intake's origin to the
+target along intake +X. Suppose an observed ball
 has field position `(20, 3)` inches. An intake at `(6, 1)` relative to the robot, facing forward,
 with `2` inches of stand-off and desired field heading `0`, requires robot-center pose `(12, 2, 0)`.
 Those numbers are illustrative geometry, not physical pickup settings.

@@ -18,6 +18,7 @@ import edu.ftcsushi.fw.localization.PlanarPoseHistory;
 import edu.ftcsushi.fw.localization.PoseEstimate;
 import edu.ftcsushi.fw.localization.fusion.CorrectionStats;
 import edu.ftcsushi.fw.localization.fusion.OdometryCorrectionFusionEstimator;
+import edu.ftcsushi.fw.sensing.observation.OccupancyObservation;
 import edu.ftcsushi.fw.sensing.observation.ObservationSources;
 import edu.ftcsushi.fw.sensing.observation.TargetObservations2d;
 import edu.ftcsushi.fw.sensing.observation.TargetSelectionResult;
@@ -218,7 +219,7 @@ public final class VisionPickupLocalizationScenarioTest {
         final List<Boolean> intakeRequests = new ArrayList<>();
         final double predictorQuality;
         TargetObservations2d raw;
-        VisionPickup.CaptureFeedback feedback;
+        OccupancyObservation feedback;
         DriveSignal manual = new DriveSignal(0.3, -0.2, -0.4);
 
         Fixture(double predictorQuality, Pose2d pose, double... targets) {
@@ -261,7 +262,7 @@ public final class VisionPickupLocalizationScenarioTest {
             fusion.update(clock());
             history.recordCurrent(clock());
             raw = VisionPickupTestRig.frame(pose, clock().nowTimestamp(), targets);
-            feedback = VisionPickup.CaptureFeedback.observed(false, clock().nowTimestamp());
+            feedback = OccupancyObservation.observed(false, clock().nowTimestamp());
         }
     }
 
